@@ -46,7 +46,7 @@ jobs:
               assert hashlib.sha256(packed).hexdigest()==digest, name
               git_sha=hashlib.sha1(b'blob '+str(len(packed)).encode()+b'\0'+packed).hexdigest()
               assert git_sha==sha, name
-              payload=json.loads(lzma.decompress(packed,memlimit=64*1024*1024))
+              payload=json.loads(lzma.decompress(packed,memlimit=512*1024*1024))
               assert payload['schema']==3 and payload['source_sha']==original
               patch=out/(name+'.patch')
               patch.write_text(payload['patch'])
