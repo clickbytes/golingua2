@@ -17,7 +17,12 @@ const (
 	Referent NodeKind = "referent"
 	State    NodeKind = "state"
 	Event    NodeKind = "event"
+	Scope    NodeKind = "scope"
 )
+
+type Operator string
+
+const Not Operator = "not"
 
 type Argument struct {
 	Role   string
@@ -31,6 +36,9 @@ type Node struct {
 	// Value is the typed concept value of a state, not a surface form.
 	Value     core.ID
 	Arguments []Argument
+	// Operator and Content belong only to a scope, never to a lexical predicate.
+	Operator  Operator
+	Content   NodeID
 	Reference context.Deixis
 	// Definiteness, Number and PronounGender describe the specific referring
 	// occurrence, never a permanent characteristic of its CORE concept.
@@ -67,9 +75,21 @@ func Validate(m Meaning, catalog *core.Catalog) error {
 		if _, ok := byID[n.ID]; ok {
 			return fmt.Errorf("duplicate occurrence %q", n.ID)
 		}
+		if n.Kind == Scope {
+			if n.Concept != "" || n.Value != "" || len(n.Arguments) != 0 || n.Reference != "" ||
+				n.Definiteness != "" || n.Number != "" || n.Person != "" || n.PronounGender != "" || n.Tense != "" ||
+				n.Operator != Not || n.Content == "" {
+				return fmt.Errorf("invalid scope %q", n.ID)
+			}
+			byID[n.ID] = n
+			continue
+		}
 		def, ok := catalog.Lookup(n.Concept)
 		if !ok {
 			return fmt.Errorf("unknown concept %q", n.Concept)
+		}
+		if n.Operator != "" || n.Content != "" {
+			return fmt.Errorf("scope data on a lexical node %q", n.ID)
 		}
 		switch n.Kind {
 		case Referent:
@@ -125,10 +145,17 @@ func Validate(m Meaning, catalog *core.Catalog) error {
 		byID[n.ID] = n
 	}
 	root, ok := byID[m.Root]
-	if !ok || (root.Kind != State && root.Kind != Event) {
+	if !ok || (root.Kind != State && root.Kind != Event && root.Kind != Scope) {
 		return fmt.Errorf("invalid meaning root")
 	}
 	reachable := map[NodeID]bool{m.Root: true}
+	if root.Kind == Scope {
+		content, exists := byID[root.Content]
+		if !exists || content.Kind != Event || content.ID == root.ID {
+			return fmt.Errorf("negation must scope exactly one finite event")
+		}
+		reachable[root.Content] = true
+	}
 	for _, n := range m.Nodes {
 		if n.Kind != State && n.Kind != Event {
 			continue
@@ -177,11 +204,14 @@ func CanonicalKey(m Meaning, catalog *core.Catalog) (string, error) {
 		names[id] = len(names) + 1
 		n := byID[id]
 		b := strings.Builder{}
-		fmt.Fprintf(&b, "(%d,%s,%s,%s,%s,%s,%s,%s,%s,%s", names[id], n.Kind, n.Concept, n.Value, n.Reference, n.Definiteness, n.Number, n.Person, n.PronounGender, n.Tense)
+		fmt.Fprintf(&b, "(%d,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s", names[id], n.Kind, n.Concept, n.Value, n.Reference, n.Definiteness, n.Number, n.Person, n.PronounGender, n.Tense, n.Operator)
 		args := append([]Argument(nil), n.Arguments...)
 		sort.Slice(args, func(i, j int) bool { return args[i].Role < args[j].Role })
 		for _, a := range args {
 			fmt.Fprintf(&b, ",%s:%s", a.Role, visit(a.Target))
+		}
+		if n.Kind == Scope {
+			fmt.Fprintf(&b, ",content:%s", visit(n.Content))
 		}
 		b.WriteByte(')')
 		return b.String()

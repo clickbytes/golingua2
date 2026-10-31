@@ -18,6 +18,8 @@ type Specials struct {
 	DefiniteArticle string
 	// True only when the demonstrative itself encodes proximal deixis.
 	DemoDenotesProximal bool
+	NegationMarker      string
+	NegationAuxiliary   string
 }
 
 type Definition struct {
@@ -164,6 +166,27 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 				}
 				if el.Slot == grammar.ObjectPhrase {
 					hasObject = true
+				}
+			}
+			if p.Negated {
+				marker, ok := li.Lookup(d.Specials.NegationMarker)
+				if !ok || marker.POS != lexicon.Particle {
+					return nil, fmt.Errorf("negative construction %q lacks lexical particle", p.ID)
+				}
+				hasAux := false
+				for _, el := range p.Sequence {
+					if el.Slot == grammar.NegationAuxiliary {
+						hasAux = true
+					}
+				}
+				if hasAux != (d.Specials.NegationAuxiliary != "") {
+					return nil, fmt.Errorf("negative auxiliary layout disagrees with language policy in %q", p.ID)
+				}
+				if hasAux {
+					a, ok := li.Lookup(d.Specials.NegationAuxiliary)
+					if !ok || a.POS != lexicon.Auxiliary {
+						return nil, fmt.Errorf("negative auxiliary unavailable for %q", p.ID)
+					}
 				}
 			}
 			if !hasSubject && !f.AllowImplicitSubject {

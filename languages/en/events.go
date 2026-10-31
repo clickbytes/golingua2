@@ -25,15 +25,30 @@ func englishPresentRules(thirdSteps []morph.Operation) []morph.Rule {
 	return rules
 }
 
+// The lexical base form is distinct from finite present: do-support must not
+// borrow a third-plural agreement cell as a shortcut.
+func englishVerbRules(thirdSteps []morph.Operation) []morph.Rule {
+	rules := englishPresentRules(thirdSteps)
+	return append(rules, morph.Rule{Features: features.Spec{VerbForm: "base"}, Steps: []morph.Operation{{Kind: morph.SelectLemma}}})
+}
+
 func addEvents(d compile.Definition) compile.Definition {
 	d.MorphClasses = append(d.MorphClasses,
-		morph.Class{ID: "en.verb.present-s", Language: "en", POS: lexicon.Verb, Rules: englishPresentRules([]morph.Operation{{Kind: morph.SelectLemma}, {Kind: morph.Append, Arg: "s"}})},
-		morph.Class{ID: "en.verb.present-y", Language: "en", POS: lexicon.Verb, Rules: englishPresentRules([]morph.Operation{{Kind: morph.SelectLemma}, {Kind: morph.ReplaceSuffix, Arg: "y", With: "ies"}})},
+		morph.Class{ID: "en.verb.present-s", Language: "en", POS: lexicon.Verb, Rules: englishVerbRules([]morph.Operation{{Kind: morph.SelectLemma}, {Kind: morph.Append, Arg: "s"}})},
+		morph.Class{ID: "en.verb.present-y", Language: "en", POS: lexicon.Verb, Rules: englishVerbRules([]morph.Operation{{Kind: morph.SelectLemma}, {Kind: morph.ReplaceSuffix, Arg: "y", With: "ies"}})},
 		morph.Class{ID: "en.pronoun.invariant", Language: "en", POS: lexicon.Pronoun, Rules: []morph.Rule{lemmaCell(features.Spec{})}},
 		morph.Class{ID: "en.article.definite", Language: "en", POS: lexicon.Article, Rules: []morph.Rule{lemmaCell(features.Spec{})}},
+		morph.Class{ID: "en.auxiliary.do-present", Language: "en", POS: lexicon.Auxiliary, Rules: englishPresentRules([]morph.Operation{{Kind: morph.SelectLemma}, {Kind: morph.Append, Arg: "es"}})},
+		morph.Class{ID: "en.particle.invariant", Language: "en", POS: lexicon.Particle, Rules: []morph.Rule{lemmaCell(features.Spec{})}},
 		morph.Class{ID: "en.noun.mass", Language: "en", POS: lexicon.Noun, Rules: []morph.Rule{lemmaCell(features.Spec{Number: "singular", Case: "nominative"})}},
 	)
 	d.Specials.DefiniteArticle = "en.article.the"
+	d.Specials.NegationMarker = "en.particle.not"
+	d.Specials.NegationAuxiliary = "en.auxiliary.do"
+	d.Lexemes = append(d.Lexemes,
+		lexicon.Entry{ID: d.Specials.NegationMarker, Lemma: "not", Language: "en", POS: lexicon.Particle, ClassID: "en.particle.invariant"},
+		lexicon.Entry{ID: d.Specials.NegationAuxiliary, Lemma: "do", Language: "en", POS: lexicon.Auxiliary, ClassID: "en.auxiliary.do-present"},
+	)
 	d.Lexemes = append(d.Lexemes, lexicon.Entry{ID: "en.article.the", Lemma: "the", Language: "en", POS: lexicon.Article, ClassID: "en.article.definite"})
 	nounData := []struct{ concept, lemma, onset, class, countability string }{
 		{"bicycle", "bicycle", "consonant", "en.noun.regular-s", "count"},
@@ -116,6 +131,11 @@ func addEvents(d compile.Definition) compile.Definition {
 			seq = append(seq, grammar.Element{Slot: grammar.ObjectPhrase})
 		}
 		d.Constructions = append(d.Constructions, grammar.Pattern{ID: f.ID + ".clause", FrameID: f.ID, Event: true, Analyze: true, Realize: true, Sequence: seq})
+		negative := []grammar.Element{{Slot: grammar.SubjectPhrase}, {Slot: grammar.NegationAuxiliary}, {Slot: grammar.NegationMarker}, {Slot: grammar.PredicateVerb}}
+		if f.ObjectRole != "" {
+			negative = append(negative, grammar.Element{Slot: grammar.ObjectPhrase})
+		}
+		d.Constructions = append(d.Constructions, grammar.Pattern{ID: f.ID + ".negative", FrameID: f.ID, Event: true, Negated: true, Analyze: true, Realize: true, Sequence: negative})
 	}
 	return d
 }

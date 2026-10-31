@@ -19,6 +19,8 @@ const (
 	Determiner POS = "determiner"
 	Article    POS = "article"
 	Pronoun    POS = "pronoun"
+	Auxiliary  POS = "auxiliary"
+	Particle   POS = "particle"
 )
 
 type Entry struct {
@@ -61,7 +63,7 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 	}
 	i := &Index{entries: make(map[string]Entry, len(entries)), senses: make(map[string]Sense, len(senses)), byConcept: make(map[core.ID][]Entry), byLexeme: make(map[string][]Sense)}
 	for _, e := range entries {
-		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun) {
+		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun && e.POS != Auxiliary && e.POS != Particle) {
 			return nil, fmt.Errorf("invalid lexeme %q", e.ID)
 		}
 		if _, ok := i.entries[e.ID]; ok {
@@ -93,6 +95,9 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		e, ok := i.entries[s.LexemeID]
 		if !ok {
 			return nil, fmt.Errorf("unbound sense %q", s.ID)
+		}
+		if e.POS == Auxiliary || e.POS == Particle {
+			return nil, fmt.Errorf("structural operator lexeme cannot claim a semantic predicate: %q", s.ID)
 		}
 		d, ok := catalog.Lookup(s.Concept)
 		if !ok {

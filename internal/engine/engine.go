@@ -442,8 +442,14 @@ func (e *Engine) Realize(language string, meaning sem.Meaning) Result {
 		return fail(status.Invalid, "INVALID_MEANING", err.Error())
 	}
 	for _, n := range meaning.Nodes {
-		if n.ID == meaning.Root && n.Kind == sem.Event {
-			return e.realizeEvent(p, meaning)
+		if n.ID != meaning.Root {
+			continue
+		}
+		if n.Kind == sem.Event {
+			return e.realizeEvent(p, meaning, n.ID, false)
+		}
+		if n.Kind == sem.Scope && n.Operator == sem.Not {
+			return e.realizeEvent(p, meaning, n.Content, true)
 		}
 	}
 	pred, ref, err := valueOf(meaning)

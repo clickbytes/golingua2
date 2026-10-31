@@ -126,11 +126,12 @@ func (e *Engine) parseNounPhrase(p *compile.Pack, tokens []string, slotCase stri
 	return out
 }
 
-func (e *Engine) parseFiniteVerb(p *compile.Pack, token string, frameID string) []verbReading {
+func (e *Engine) parseEventVerb(p *compile.Pack, token string, frameID string, base bool) []verbReading {
 	out := []verbReading{}
 	for _, form := range p.Morph.Analyze(token) {
 		lex, ok := p.Lexicon.Lookup(form.LexemeID)
-		if !ok || lex.POS != lexicon.Verb || form.Features.Tense != "present" {
+		if !ok || lex.POS != lexicon.Verb || base && (form.Features.VerbForm != "base" || form.Features.Tense != "") ||
+			!base && (form.Features.Tense != "present" || form.Features.VerbForm != "") {
 			continue
 		}
 		for _, sense := range p.Lexicon.SensesFor(lex.ID) {
@@ -141,6 +142,35 @@ func (e *Engine) parseFiniteVerb(p *compile.Pack, token string, frameID string) 
 		}
 	}
 	return out
+}
+
+// A negative auxiliary is an independent lexical and morphological license.
+// A marker or auxiliary is never accepted merely by its surface spelling.
+func markerLicensed(p *compile.Pack, token, lexemeID string) bool {
+	for _, reading := range p.Morph.Analyze(token) {
+		if reading.LexemeID == lexemeID {
+			return true
+		}
+	}
+	return false
+}
+
+func negativeAuxiliaries(p *compile.Pack, token string) []verbReading {
+	var out []verbReading
+	for _, reading := range p.Morph.Analyze(token) {
+		if reading.LexemeID != p.Specials.NegationAuxiliary || reading.Features.Tense != "present" {
+			continue
+		}
+		out = append(out, verbReading{person: reading.Features.Person, number: reading.Features.Number})
+	}
+	return out
+}
+
+func eventObjectCase(frame grammar.EventFrame, negated bool) string {
+	if negated && frame.NegatedObjectCase != "" {
+		return frame.NegatedObjectCase
+	}
+	return frame.ObjectCase
 }
 
 func agreesWithVerb(ref sem.Node, v verbReading) bool {
@@ -169,13 +199,33 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 			hasSubject = true
 		}
 	}
-	// Every pattern has one finite VP; an NP consumes at most an article+noun.
+	hasAux := false
+	for _, el := range pat.Sequence {
+		if el.Slot == grammar.NegationAuxiliary {
+			hasAux = true
+		}
+	}
+	// Every pattern has one finite VP (or a base VP licensed by do-support);
+	// an NP consumes at most an article+noun.
 	for subjectLen := 0; subjectLen <= 2; subjectLen++ {
 		if hasSubject && subjectLen == 0 || !hasSubject && subjectLen != 0 {
 			continue
 		}
 		verbIndex := subjectLen
+		markerIndex := -1
+		auxIndex := -1
+		if hasAux {
+			auxIndex = verbIndex
+			verbIndex++
+		}
+		if pat.Negated {
+			markerIndex = verbIndex
+			verbIndex++
+		}
 		if verbIndex >= len(tokens) {
+			continue
+		}
+		if pat.Negated && !markerLicensed(p, tokens[markerIndex], p.Specials.NegationMarker) {
 			continue
 		}
 		objectTokens := tokens[verbIndex+1:]
@@ -191,7 +241,7 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 				continue
 			}
 		}
-		objectCase := frame.ObjectCase
+		objectCase := eventObjectCase(frame, pat.Negated)
 		if p.Language == "en" {
 			objectCase = "nominative"
 		}
@@ -204,7 +254,7 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 		} else {
 			objects = []nounReading{{}}
 		}
-		for _, verb := range e.parseFiniteVerb(p, tokens[verbIndex], pat.FrameID) {
+		for _, verb := range e.parseEventVerb(p, tokens[verbIndex], pat.FrameID, hasAux) {
 			if !hasSubject {
 				if p.Language != "pl" || (verb.person != "first" && verb.person != "second") || verb.number == "" {
 					continue
@@ -212,7 +262,18 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 				subjects = []nounReading{{ref: sem.Node{Kind: sem.Referent, Concept: "entity.person", Person: verb.person, Number: verb.number}}}
 			}
 			for _, sub := range subjects {
-				if !agreesWithVerb(sub.ref, verb) {
+				if hasAux {
+					licensed := false
+					for _, aux := range negativeAuxiliaries(p, tokens[auxIndex]) {
+						if agreesWithVerb(sub.ref, aux) {
+							licensed = true
+							break
+						}
+					}
+					if !licensed {
+						continue
+					}
+				} else if !agreesWithVerb(sub.ref, verb) {
 					continue
 				}
 				for _, obj := range objects {
@@ -228,10 +289,21 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 						nodes = append(nodes, ob)
 					}
 					m := sem.Meaning{Root: pred.ID, Nodes: nodes}
+					if pat.Negated {
+						neg := sem.Node{ID: "n1", Kind: sem.Scope, Operator: sem.Not, Content: pred.ID}
+						m.Root = neg.ID
+						m.Nodes = append(m.Nodes, neg)
+					}
 					if err := sem.Validate(m, e.catalog); err != nil {
 						continue
 					}
 					evidence := []Evidence{{Token: verbIndex, Lexeme: verb.lex.ID, Sense: verb.sense.ID, Node: pred.ID}}
+					if pat.Negated {
+						evidence = append(evidence, Evidence{Token: markerIndex, Lexeme: p.Specials.NegationMarker, Node: "n1"})
+						if hasAux {
+							evidence = append(evidence, Evidence{Token: auxIndex, Lexeme: p.Specials.NegationAuxiliary, Node: pred.ID})
+						}
+					}
 					if hasSubject {
 						evidence = append(evidence, Evidence{Token: 0, Lexeme: sub.lex.ID, Sense: sub.sense.ID, Node: "r1"})
 					}
@@ -365,15 +437,15 @@ func (e *Engine) renderEventNP(p *compile.Pack, ref sem.Node, grammaticalCase st
 	return out
 }
 
-func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning) Result {
+func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning, eventID sem.NodeID, negated bool) Result {
 	nodes := map[sem.NodeID]sem.Node{}
 	for _, n := range m.Nodes {
 		nodes[n.ID] = n
 	}
-	event := nodes[m.Root]
+	event := nodes[eventID]
 	produced := map[string]Candidate{}
 	for _, pat := range p.Constructions {
-		if !pat.Event || !pat.Realize {
+		if !pat.Event || !pat.Realize || pat.Negated != negated {
 			continue
 		}
 		frame, ok := p.EventFrame(pat.FrameID)
@@ -413,7 +485,7 @@ func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning) Result {
 		}
 		objects := []phraseOption{{text: ""}}
 		if hasObject {
-			caseName := frame.ObjectCase
+			caseName := eventObjectCase(frame, negated)
 			if p.Language == "en" {
 				caseName = "nominative"
 			}
@@ -442,9 +514,33 @@ func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning) Result {
 				if number == "" {
 					continue
 				}
-				surface, err := p.Morph.Generate(verb.ID, features.Spec{Number: number, Person: person, Tense: event.Tense})
+				hasAux := false
+				for _, el := range pat.Sequence {
+					if el.Slot == grammar.NegationAuxiliary {
+						hasAux = true
+					}
+				}
+				verbFeatures := features.Spec{Number: number, Person: person, Tense: event.Tense}
+				if hasAux {
+					verbFeatures = features.Spec{VerbForm: "base"}
+				}
+				surface, err := p.Morph.Generate(verb.ID, verbFeatures)
 				if err != nil {
 					continue
+				}
+				auxText := ""
+				if hasAux {
+					auxText, err = p.Morph.Generate(p.Specials.NegationAuxiliary, features.Spec{Number: number, Person: person, Tense: event.Tense})
+					if err != nil {
+						continue
+					}
+				}
+				markerText := ""
+				if pat.Negated {
+					markerText, err = p.Morph.Generate(p.Specials.NegationMarker, features.Spec{})
+					if err != nil {
+						continue
+					}
 				}
 				for _, obj := range objects {
 					parts := make([]string, 0, len(pat.Sequence))
@@ -454,6 +550,10 @@ func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning) Result {
 							parts = append(parts, sub.text)
 						case grammar.PredicateVerb:
 							parts = append(parts, surface)
+						case grammar.NegationAuxiliary:
+							parts = append(parts, auxText)
+						case grammar.NegationMarker:
+							parts = append(parts, markerText)
 						case grammar.ObjectPhrase:
 							parts = append(parts, obj.text)
 						}

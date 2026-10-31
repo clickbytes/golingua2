@@ -11,14 +11,16 @@ import (
 type Slot string
 
 const (
-	Demonstrative Slot = "demonstrative"
-	Copula        Slot = "copula"
-	Article       Slot = "article"
-	Noun          Slot = "noun"
-	Adjective     Slot = "adjective"
-	SubjectPhrase Slot = "subject_phrase"
-	PredicateVerb Slot = "predicate_verb"
-	ObjectPhrase  Slot = "object_phrase"
+	Demonstrative     Slot = "demonstrative"
+	Copula            Slot = "copula"
+	Article           Slot = "article"
+	Noun              Slot = "noun"
+	Adjective         Slot = "adjective"
+	SubjectPhrase     Slot = "subject_phrase"
+	PredicateVerb     Slot = "predicate_verb"
+	ObjectPhrase      Slot = "object_phrase"
+	NegationAuxiliary Slot = "negation_auxiliary"
+	NegationMarker    Slot = "negation_marker"
 )
 
 type Frame struct {
@@ -39,11 +41,12 @@ type EventFrame struct {
 	SubjectRole          string
 	ObjectRole           string // empty for an intransitive predicate
 	ObjectCase           string // target language morphological case
+	NegatedObjectCase    string // explicit case government for Not, empty means ObjectCase
 	AllowImplicitSubject bool
 }
 
 func ValidateEventFrame(f EventFrame) error {
-	if f.ID == "" || f.SubjectRole == "" || (f.ObjectRole != "" && f.ObjectRole == f.SubjectRole) || (f.ObjectRole == "" && f.ObjectCase != "") {
+	if f.ID == "" || f.SubjectRole == "" || (f.ObjectRole != "" && f.ObjectRole == f.SubjectRole) || (f.ObjectRole == "" && (f.ObjectCase != "" || f.NegatedObjectCase != "")) {
 		return fmt.Errorf("invalid event frame %q", f.ID)
 	}
 	return nil
@@ -83,6 +86,7 @@ func ValidateFrame(f Frame, catalog *core.Catalog) error {
 type Element struct{ Slot Slot }
 type Pattern struct {
 	Event      bool
+	Negated    bool // this construction covers an exact Not scope
 	ID         string
 	FrameID    string
 	Predicate  core.ID
@@ -104,13 +108,42 @@ func Validate(p Pattern) error {
 		for _, el := range p.Sequence {
 			counts[el.Slot]++
 		}
-		if counts[PredicateVerb] != 1 || counts[SubjectPhrase] > 1 || counts[ObjectPhrase] > 1 || counts[SubjectPhrase]+counts[ObjectPhrase]+counts[PredicateVerb] != len(p.Sequence) {
+		if counts[PredicateVerb] != 1 || counts[SubjectPhrase] > 1 || counts[ObjectPhrase] > 1 ||
+			counts[NegationMarker] > 1 || counts[NegationAuxiliary] > 1 ||
+			counts[SubjectPhrase]+counts[ObjectPhrase]+counts[PredicateVerb]+counts[NegationMarker]+counts[NegationAuxiliary] != len(p.Sequence) {
 			return fmt.Errorf("invalid event slots %q", p.ID)
 		}
-		if counts[SubjectPhrase] == 1 && (p.Sequence[0].Slot != SubjectPhrase || p.Sequence[1].Slot != PredicateVerb || len(p.Sequence) == 3 && p.Sequence[2].Slot != ObjectPhrase) || counts[SubjectPhrase] == 0 && (p.Sequence[0].Slot != PredicateVerb || len(p.Sequence) != 2 || p.Sequence[1].Slot != ObjectPhrase) {
+		if p.Negated != (counts[NegationMarker] == 1) || (counts[NegationAuxiliary] == 1 && !p.Negated) {
+			return fmt.Errorf("negation marker/auxiliary mismatch in %q", p.ID)
+		}
+		// The layout is shared by both languages; only language packs declare
+		// which of the optional auxiliary and explicit subject are licensed.
+		expected := []Slot{}
+		if counts[SubjectPhrase] != 0 {
+			expected = append(expected, SubjectPhrase)
+		}
+		if counts[NegationAuxiliary] != 0 {
+			expected = append(expected, NegationAuxiliary)
+		}
+		if counts[NegationMarker] != 0 {
+			expected = append(expected, NegationMarker)
+		}
+		expected = append(expected, PredicateVerb)
+		if counts[ObjectPhrase] != 0 {
+			expected = append(expected, ObjectPhrase)
+		}
+		if len(expected) != len(p.Sequence) {
 			return fmt.Errorf("invalid event word order %q", p.ID)
 		}
+		for i, slot := range expected {
+			if p.Sequence[i].Slot != slot {
+				return fmt.Errorf("invalid event word order %q", p.ID)
+			}
+		}
 		return nil
+	}
+	if p.Negated {
+		return fmt.Errorf("negation scope requires an event construction %q", p.ID)
 	}
 	if p.DemoGender != "fixed_neuter" && p.DemoGender != "agree" && p.DemoGender != "invariant" {
 		return fmt.Errorf("construction %q needs demonstrative policy", p.ID)

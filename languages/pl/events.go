@@ -29,10 +29,13 @@ func addEvents(d compile.Definition) compile.Definition {
 			stemCell(features.Spec{Number: "plural", Person: "second", Tense: "present"}, "root", "acie"),
 			stemCell(features.Spec{Number: "plural", Person: "third", Tense: "present"}, "root", "ają"),
 		}},
+		morph.Class{ID: "pl.particle.invariant", Language: "pl", POS: lexicon.Particle, Rules: []morph.Rule{lemmaCell(features.Spec{})}},
 		morph.Class{ID: "pl.pronoun.invariant", Language: "pl", POS: lexicon.Pronoun, Rules: []morph.Rule{lemmaCell(features.Spec{})}},
 		morph.Class{ID: "pl.noun.plural-only", Language: "pl", POS: lexicon.Noun, Rules: []morph.Rule{polishNounPLCase("nominative"), polishNounPLCase("accusative")}},
 		morph.Class{ID: "pl.noun.masculine.a", Language: "pl", POS: lexicon.Noun, Rules: []morph.Rule{lemmaCell(features.Spec{Number: "singular", Case: "nominative"}), stemCell(features.Spec{Number: "singular", Case: "accusative"}, "root", "ę")}},
 	)
+	d.Specials.NegationMarker = "pl.particle.nie"
+	d.Lexemes = append(d.Lexemes, lexicon.Entry{ID: d.Specials.NegationMarker, Language: "pl", Lemma: "nie", POS: lexicon.Particle, ClassID: "pl.particle.invariant"})
 	// The ordinary neuter -o class provides regular dative -u as required by
 	// pomaga dziecku; the object-case license lives on the frame, not the noun.
 	for i := range d.MorphClasses {
@@ -95,8 +98,8 @@ func addEvents(d compile.Definition) compile.Definition {
 		d.Senses = append(d.Senses, lexicon.Sense{ID: "pl.sense.verb." + x.concept, LexemeID: id, Concept: core.ID("predicate." + x.concept), FrameIDs: []string{"pl.frame." + x.frame}})
 	}
 	d.EventFrames = append(d.EventFrames,
-		grammar.EventFrame{ID: "pl.frame.have", SubjectRole: "holder", ObjectRole: "theme", ObjectCase: "accusative", AllowImplicitSubject: true},
-		grammar.EventFrame{ID: "pl.frame.acc", SubjectRole: "agent", ObjectRole: "patient", ObjectCase: "accusative"},
+		grammar.EventFrame{ID: "pl.frame.have", SubjectRole: "holder", ObjectRole: "theme", ObjectCase: "accusative", NegatedObjectCase: "genitive", AllowImplicitSubject: true},
+		grammar.EventFrame{ID: "pl.frame.acc", SubjectRole: "agent", ObjectRole: "patient", ObjectCase: "accusative", NegatedObjectCase: "genitive"},
 		grammar.EventFrame{ID: "pl.frame.dat", SubjectRole: "agent", ObjectRole: "beneficiary", ObjectCase: "dative"},
 		grammar.EventFrame{ID: "pl.frame.intr", SubjectRole: "agent"},
 	)
@@ -106,9 +109,15 @@ func addEvents(d compile.Definition) compile.Definition {
 			seq = append(seq, grammar.Element{Slot: grammar.ObjectPhrase})
 		}
 		d.Constructions = append(d.Constructions, grammar.Pattern{ID: f.ID + ".explicit", FrameID: f.ID, Event: true, Analyze: true, Realize: true, Sequence: seq})
+		negative := []grammar.Element{{Slot: grammar.SubjectPhrase}, {Slot: grammar.NegationMarker}, {Slot: grammar.PredicateVerb}}
+		if f.ObjectRole != "" {
+			negative = append(negative, grammar.Element{Slot: grammar.ObjectPhrase})
+		}
+		d.Constructions = append(d.Constructions, grammar.Pattern{ID: f.ID + ".negative", FrameID: f.ID, Event: true, Negated: true, Analyze: true, Realize: true, Sequence: negative})
 	}
 	// The language allows omitted 1st/2nd person subjects only where the frame
 	// licenses it; a definite participant anchor is still present in Meaning.
 	d.Constructions = append(d.Constructions, grammar.Pattern{ID: "pl.frame.have.implicit", FrameID: "pl.frame.have", Event: true, Analyze: true, Realize: true, Sequence: []grammar.Element{{Slot: grammar.PredicateVerb}, {Slot: grammar.ObjectPhrase}}})
+	d.Constructions = append(d.Constructions, grammar.Pattern{ID: "pl.frame.have.negative-implicit", FrameID: "pl.frame.have", Event: true, Negated: true, Analyze: true, Realize: true, Sequence: []grammar.Element{{Slot: grammar.NegationMarker}, {Slot: grammar.PredicateVerb}, {Slot: grammar.ObjectPhrase}}})
 	return d
 }
