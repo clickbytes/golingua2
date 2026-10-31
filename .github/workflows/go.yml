@@ -1,4 +1,4 @@
-name: GoLingua 2 — build and M1 acceptance
+name: GoLingua 2 — build and M1/M2 acceptance
 on:
   push:
     branches: [main]
@@ -21,7 +21,7 @@ jobs:
         run: test -z "$(gofmt -l cmd internal languages tests)"
       - name: Go vet
         run: go vet ./...
-      - name: All tests, including M1 independent IR
+      - name: All tests, including M1/M2 independent IR
         run: go test ./... -count=1
       - name: Race checks
         run: go test -race ./... -count=1
@@ -32,3 +32,5 @@ jobs:
           "$RUNNER_TEMP/golingua2" --version
           test "$("$RUNNER_TEMP/golingua2" translate --from pl --to en --near --text 'To jest kot.')" = "$(printf 'outcome: ok\nThis is a cat.')"
           test "$("$RUNNER_TEMP/golingua2" translate --from en --to pl --text 'This book is new.')" = "$(printf 'outcome: ok\nTa książka jest nowa.')"
+          test "$("$RUNNER_TEMP/golingua2" translate --from en --to pl --text 'I have a book.')" = "$(printf 'outcome: ok\nMam książkę.')"
+          test "$("$RUNNER_TEMP/golingua2" translate --from en --to pl --text 'A teacher reads a book.')" = "$(printf 'outcome: ok\nNauczyciel czyta książkę.')"

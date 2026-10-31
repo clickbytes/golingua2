@@ -15,7 +15,7 @@ import (
 	"github.com/clickbytes/golingua2/languages/pl"
 )
 
-const version = "0.1.0-m1"
+const version = "0.2.0-m2"
 
 func usage() {
 	fmt.Fprintln(os.Stdout, "GoLingua 2 — compiled procedural PL ↔ Semantic IR ↔ EN")
@@ -23,7 +23,7 @@ func usage() {
 	fmt.Fprintln(os.Stdout, "  golingua2 translate --from pl --to en --text 'To jest kot.' --near [--json]")
 	fmt.Fprintln(os.Stdout, "  golingua2 analyze --from en --text 'This cat is black.' [--json]")
 	fmt.Fprintln(os.Stdout, "  golingua2 --version")
-	fmt.Fprintln(os.Stdout, "M1: classification and demonstrative properties; A1 scenarios 001–020 only.")
+	fmt.Fprintln(os.Stdout, "M1 + M2: classification, properties, possession, transitive/intransitive present; A1 001–050.")
 }
 func run() int {
 	if len(os.Args) <= 1 || os.Args[1] == "help" || os.Args[1] == "--help" || os.Args[1] == "-h" {
@@ -45,6 +45,7 @@ func run() int {
 	to := fs.String("to", "", "target language: pl or en")
 	text := fs.String("text", "", "source sentence")
 	near := fs.Bool("near", false, "explicit proximal/deictic context for Polish 'to/ten/ta'")
+	addressee := fs.String("addressee", "", "number of English you: singular or plural; omitted remains ambiguous")
 	jsonOut := fs.Bool("json", false, "display JSON result (no JSON sentence fixtures are used)")
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return 2
@@ -63,7 +64,7 @@ func run() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	ctx := context.Request{Deixis: context.Unresolved}
+	ctx := context.Request{Deixis: context.Unresolved, AddresseeNumber: *addressee}
 	if *near {
 		ctx.Deixis = context.Proximal
 	}

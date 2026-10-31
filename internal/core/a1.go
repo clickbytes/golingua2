@@ -11,6 +11,23 @@ func BaseA1() (*Catalog, error) {
 	for _, name := range []string{"cat", "dog", "book", "house", "table", "chair", "teacher", "student", "apple", "window", "bag", "coffee", "school"} {
 		defs = append(defs, Definition{ID: ID("entity." + name), Kind: Entity})
 	}
+	for _, name := range []string{"person", "bicycle", "car", "phone", "water", "letter", "bird", "girl", "boy", "mother", "father", "door", "doctor", "child"} {
+		defs = append(defs, Definition{ID: ID("entity." + name), Kind: Entity})
+	}
+	for _, name := range []string{"have", "read", "see", "drink", "eat", "open", "close", "help", "write"} {
+		role0 := "agent"
+		role1 := "patient"
+		if name == "have" {
+			role0, role1 = "holder", "theme"
+		}
+		if name == "help" {
+			role1 = "beneficiary"
+		}
+		defs = append(defs, Definition{ID: ID("predicate." + name), Kind: Predicate, Roles: []Role{{Name: role0, Target: Entity}, {Name: role1, Target: Entity}}})
+	}
+	for _, name := range []string{"sleep", "run", "fly", "sit", "work", "cook", "walk", "sing", "bark", "cry"} {
+		defs = append(defs, Definition{ID: ID("predicate." + name), Kind: Predicate, Roles: []Role{{Name: "agent", Target: Entity}}})
+	}
 	for _, name := range []string{"black", "small", "new", "big", "open", "red", "hot"} {
 		defs = append(defs, Definition{ID: ID("property." + name), Kind: Property})
 	}

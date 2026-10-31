@@ -34,9 +34,18 @@ type Evidence struct {
 	Node   sem.NodeID `json:"node,omitempty"`
 }
 type Candidate struct {
-	Meaning  sem.Meaning `json:"meaning"`
-	Text     string      `json:"text,omitempty"`
-	Evidence []Evidence  `json:"evidence,omitempty"`
+	Meaning     sem.Meaning  `json:"meaning"`
+	Text        string       `json:"text,omitempty"`
+	Evidence    []Evidence   `json:"evidence,omitempty"`
+	Assumptions []Annotation `json:"assumptions,omitempty"`
+	Losses      []Annotation `json:"losses,omitempty"`
+}
+
+// Annotation belongs to a specific occurrence, not the shared concept.
+type Annotation struct {
+	Node  sem.NodeID `json:"node"`
+	Field string     `json:"field"`
+	Value string     `json:"value,omitempty"`
 }
 type Result struct {
 	Outcome     status.Outcome      `json:"outcome"`
@@ -245,6 +254,9 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 	}
 	found := make(map[string]Candidate)
 	for _, pat := range p.Constructions {
+		if pat.Event {
+			continue
+		}
 		if !pat.Analyze || len(pat.Sequence) != len(tokens) {
 			continue
 		}
@@ -307,6 +319,22 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 				return fail(status.ResourceLimit, "ANALYSIS_WORK_LIMIT", "analysis search work budget exceeded")
 			}
 			return fail(status.ResourceLimit, "CANDIDATE_LIMIT", "analysis candidate limit exceeded")
+		}
+	}
+	// Event constructions reuse this Meaning IR and the same result envelope.
+	for _, pat := range p.Constructions {
+		if !pat.Event || !pat.Analyze {
+			continue
+		}
+		for _, candidate := range e.analyzeEventPattern(p, pat, tokens, req) {
+			key, err := sem.CanonicalKey(candidate.Meaning, e.catalog)
+			if err != nil {
+				continue
+			}
+			found[key] = candidate
+			if len(found) > maxCandidates {
+				return fail(status.ResourceLimit, "CANDIDATE_LIMIT", "analysis candidate limit exceeded")
+			}
 		}
 	}
 	if len(found) == 0 {
@@ -413,6 +441,11 @@ func (e *Engine) Realize(language string, meaning sem.Meaning) Result {
 	if err := sem.Validate(meaning, e.catalog); err != nil {
 		return fail(status.Invalid, "INVALID_MEANING", err.Error())
 	}
+	for _, n := range meaning.Nodes {
+		if n.ID == meaning.Root && n.Kind == sem.Event {
+			return e.realizeEvent(p, meaning)
+		}
+	}
 	pred, ref, err := valueOf(meaning)
 	if err != nil {
 		return fail(status.Unsupported, "UNSUPPORTED_MEANING", err.Error())
@@ -422,7 +455,7 @@ func (e *Engine) Realize(language string, meaning sem.Meaning) Result {
 	}
 	produced := map[string]Candidate{}
 	for _, pat := range p.Constructions {
-		if !pat.Realize || pat.Predicate != pred.Concept {
+		if pat.Event || !pat.Realize || pat.Predicate != pred.Concept {
 			continue
 		}
 		frame, licensed := p.Frame(pat.FrameID)
@@ -491,7 +524,13 @@ func (e *Engine) Translate(source, target, text string, ctx context.Request) Res
 				return fail(status.ResourceLimit, "CANDIDATE_LIMIT", "translation candidates exceeded bound")
 			}
 			cand.Evidence = append([]Evidence(nil), analysis.Evidence...)
-			texts[cand.Text] = cand
+			cand.Assumptions = append(append([]Annotation(nil), analysis.Assumptions...), cand.Assumptions...)
+			cand.Losses = append(append([]Annotation(nil), analysis.Losses...), cand.Losses...)
+			key, err := sem.CanonicalKey(cand.Meaning, e.catalog)
+			if err != nil {
+				return fail(status.Invalid, "INVALID_TRANSLATION_MEANING", err.Error())
+			}
+			texts[cand.Text+"\x00"+key] = cand
 		}
 	}
 	if len(texts) == 0 {

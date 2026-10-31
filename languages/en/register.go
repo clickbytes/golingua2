@@ -56,7 +56,7 @@ func Definition() compile.Definition {
 		lexicon.Entry{ID: "en.verb.be", Language: "en", Lemma: "be", POS: lexicon.Verb, ClassID: "en.copula.present", Stems: map[string]string{"present_3sg": "is"}},
 		lexicon.Entry{ID: "en.article.a", Language: "en", Lemma: "a", POS: lexicon.Article, ClassID: "en.article.indefinite", Stems: map[string]string{"consonant": "a", "vowel": "an"}},
 	)
-	return compile.Definition{Language: "en", Lexemes: entries, Senses: senses, MorphClasses: classes,
+	return addEvents(compile.Definition{Language: "en", Lexemes: entries, Senses: senses, MorphClasses: classes,
 		Frames: []grammar.Frame{
 			{ID: "en.frame.classification", Predicate: "predicate.is_a", Role: "member", ValueSlot: grammar.Noun, ReferentConcept: "entity.unspecified"},
 			{ID: "en.frame.property", Predicate: "predicate.has_property", Role: "bearer", ValueSlot: grammar.Adjective},
@@ -66,5 +66,5 @@ func Definition() compile.Definition {
 			{ID: "en.classification.proximal", FrameID: "en.frame.classification", Predicate: "predicate.is_a", Analyze: true, Realize: true, DemoGender: "invariant", Sequence: []grammar.Element{{Slot: grammar.Demonstrative}, {Slot: grammar.Copula}, {Slot: grammar.Article}, {Slot: grammar.Noun}}},
 			{ID: "en.property.proximal", FrameID: "en.frame.property", Predicate: "predicate.has_property", Analyze: true, Realize: true, DemoGender: "invariant", Sequence: []grammar.Element{{Slot: grammar.Demonstrative}, {Slot: grammar.Noun}, {Slot: grammar.Copula}, {Slot: grammar.Adjective}}},
 		},
-	}
+	})
 }

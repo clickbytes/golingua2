@@ -18,6 +18,7 @@ const (
 	Verb       POS = "verb"
 	Determiner POS = "determiner"
 	Article    POS = "article"
+	Pronoun    POS = "pronoun"
 )
 
 type Entry struct {
@@ -30,6 +31,11 @@ type Entry struct {
 	Gender   string
 	// Onset is lexical phonology, not an English spelling heuristic.
 	Onset string
+	// Countability determines article/number behavior without inventing cardinality.
+	Countability  string // "count", "mass", "plural_only" for nouns
+	PronounPerson string
+	PronounNumber string
+	PronounGender string
 	// Overrides are attested exceptional cells; keys are features.Spec.Key().
 	Overrides map[string]string
 }
@@ -38,6 +44,8 @@ type Sense struct {
 	ID       string
 	LexemeID string
 	Concept  core.ID
+	// FrameIDs license a verb sense to exact language-local valency frames.
+	FrameIDs []string
 }
 
 type Index struct {
@@ -53,7 +61,7 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 	}
 	i := &Index{entries: make(map[string]Entry, len(entries)), senses: make(map[string]Sense, len(senses)), byConcept: make(map[core.ID][]Entry), byLexeme: make(map[string][]Sense)}
 	for _, e := range entries {
-		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article) {
+		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun) {
 			return nil, fmt.Errorf("invalid lexeme %q", e.ID)
 		}
 		if _, ok := i.entries[e.ID]; ok {
@@ -61,6 +69,12 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		}
 		if e.POS == Noun && e.Gender == "" && language == "pl" {
 			return nil, fmt.Errorf("Polish noun %q requires gender", e.ID)
+		}
+		if e.POS == Noun && e.Countability != "" && e.Countability != "count" && e.Countability != "mass" && e.Countability != "plural_only" {
+			return nil, fmt.Errorf("invalid noun countability %q", e.ID)
+		}
+		if e.POS == Pronoun && (e.PronounPerson != "first" && e.PronounPerson != "second" && e.PronounPerson != "third" || (e.PronounNumber != "" && e.PronounNumber != "singular" && e.PronounNumber != "plural")) {
+			return nil, fmt.Errorf("invalid pronoun properties %q", e.ID)
 		}
 		if e.Onset != "" && e.Onset != "vowel" && e.Onset != "consonant" {
 			return nil, fmt.Errorf("invalid lexical onset %q", e.ID)
@@ -84,9 +98,13 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		if !ok {
 			return nil, fmt.Errorf("unknown concept for %q", s.ID)
 		}
-		if (e.POS == Noun && d.Kind != core.Entity) || (e.POS == Adjective && d.Kind != core.Property) {
+		if (e.POS == Noun || e.POS == Pronoun) && d.Kind != core.Entity || e.POS == Adjective && d.Kind != core.Property || e.POS == Verb && d.Kind != core.Predicate {
 			return nil, fmt.Errorf("lexical concept/POS mismatch at %q", s.ID)
 		}
+		if (e.POS == Verb && len(s.FrameIDs) == 0) || (e.POS != Verb && len(s.FrameIDs) > 0) {
+			return nil, fmt.Errorf("invalid valency licenses for sense %q", s.ID)
+		}
+		s.FrameIDs = append([]string(nil), s.FrameIDs...)
 		i.senses[s.ID] = s
 		i.byLexeme[s.LexemeID] = append(i.byLexeme[s.LexemeID], s)
 		i.byConcept[s.Concept] = append(i.byConcept[s.Concept], e)
@@ -141,7 +159,11 @@ func (i *Index) SensesFor(lexemeID string) []Sense {
 	if i == nil {
 		return nil
 	}
-	return append([]Sense(nil), i.byLexeme[lexemeID]...)
+	v := append([]Sense(nil), i.byLexeme[lexemeID]...)
+	for k := range v {
+		v[k].FrameIDs = append([]string(nil), v[k].FrameIDs...)
+	}
+	return v
 }
 
 func (i *Index) Entries() []Entry {

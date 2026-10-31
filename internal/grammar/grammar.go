@@ -16,6 +16,9 @@ const (
 	Article       Slot = "article"
 	Noun          Slot = "noun"
 	Adjective     Slot = "adjective"
+	SubjectPhrase Slot = "subject_phrase"
+	PredicateVerb Slot = "predicate_verb"
+	ObjectPhrase  Slot = "object_phrase"
 )
 
 type Frame struct {
@@ -27,6 +30,23 @@ type Frame struct {
 	// An explicit entity concept if the referent is an unspecified class member.
 	// Empty means its concept comes from the noun slot (property attribution).
 	ReferentConcept core.ID
+}
+
+// EventFrame uses neutral role signatures and language-local government. It has
+// no per-verb construction list: each verb sense explicitly licenses the frame.
+type EventFrame struct {
+	ID                   string
+	SubjectRole          string
+	ObjectRole           string // empty for an intransitive predicate
+	ObjectCase           string // target language morphological case
+	AllowImplicitSubject bool
+}
+
+func ValidateEventFrame(f EventFrame) error {
+	if f.ID == "" || f.SubjectRole == "" || (f.ObjectRole != "" && f.ObjectRole == f.SubjectRole) || (f.ObjectRole == "" && f.ObjectCase != "") {
+		return fmt.Errorf("invalid event frame %q", f.ID)
+	}
+	return nil
 }
 
 // ValidateFrame compares the language frame with the neutral concept signature.
@@ -62,6 +82,7 @@ func ValidateFrame(f Frame, catalog *core.Catalog) error {
 
 type Element struct{ Slot Slot }
 type Pattern struct {
+	Event      bool
 	ID         string
 	FrameID    string
 	Predicate  core.ID
@@ -72,8 +93,24 @@ type Pattern struct {
 }
 
 func Validate(p Pattern) error {
-	if p.ID == "" || p.FrameID == "" || len(p.Sequence) < 3 || len(p.Sequence) > 12 || (!p.Analyze && !p.Realize) {
+	if p.ID == "" || p.FrameID == "" || len(p.Sequence) == 0 || len(p.Sequence) > 12 || (!p.Analyze && !p.Realize) {
 		return fmt.Errorf("invalid construction declaration %q", p.ID)
+	}
+	if p.Event {
+		if p.DemoGender != "" || p.Predicate != "" {
+			return fmt.Errorf("event pattern mixes unrelated predicate/demonstrative policies %q", p.ID)
+		}
+		counts := map[Slot]int{}
+		for _, el := range p.Sequence {
+			counts[el.Slot]++
+		}
+		if counts[PredicateVerb] != 1 || counts[SubjectPhrase] > 1 || counts[ObjectPhrase] > 1 || counts[SubjectPhrase]+counts[ObjectPhrase]+counts[PredicateVerb] != len(p.Sequence) {
+			return fmt.Errorf("invalid event slots %q", p.ID)
+		}
+		if counts[SubjectPhrase] == 1 && (p.Sequence[0].Slot != SubjectPhrase || p.Sequence[1].Slot != PredicateVerb || len(p.Sequence) == 3 && p.Sequence[2].Slot != ObjectPhrase) || counts[SubjectPhrase] == 0 && (p.Sequence[0].Slot != PredicateVerb || len(p.Sequence) != 2 || p.Sequence[1].Slot != ObjectPhrase) {
+			return fmt.Errorf("invalid event word order %q", p.ID)
+		}
+		return nil
 	}
 	if p.DemoGender != "fixed_neuter" && p.DemoGender != "agree" && p.DemoGender != "invariant" {
 		return fmt.Errorf("construction %q needs demonstrative policy", p.ID)

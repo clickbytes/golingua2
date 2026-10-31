@@ -45,7 +45,7 @@ func NewCatalog(defs []Definition) (*Catalog, error) {
 		if d.Kind != Predicate && (len(d.Roles) != 0 || d.ValueKind != "") {
 			return nil, fmt.Errorf("non-predicate has signature: %q", d.ID)
 		}
-		if d.Kind == Predicate && (len(d.Roles) == 0 || d.ValueKind == "" || len(d.Roles) > 8) {
+		if d.Kind == Predicate && (len(d.Roles) == 0 || len(d.Roles) > 8 || (d.ValueKind != "" && d.ValueKind != Entity && d.ValueKind != Property)) {
 			return nil, fmt.Errorf("missing predicate signature: %q", d.ID)
 		}
 		seen := map[string]bool{}
@@ -92,4 +92,16 @@ func validID(s string) bool {
 		}
 	}
 	return true
+}
+
+// Definitions exposes detached declarations for explicit construction of an
+// extended catalog. Compiled predicate signatures are not mutated in place.
+func (c *Catalog) Definitions() []Definition {
+	ids := c.SortedIDs()
+	out := make([]Definition, 0, len(ids))
+	for _, id := range ids {
+		def, _ := c.Lookup(id)
+		out = append(out, def)
+	}
+	return out
 }
