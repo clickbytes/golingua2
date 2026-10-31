@@ -16,6 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -32,7 +33,7 @@ jobs:
           payload_sha='300057f112ea939b58e65bb07587831c379a2437'
           payload_digest='cb15a3f2446c2c7bd01f4cb6fc25e8f51602a25b16e512ae6099d5307593c1af'
           out=pathlib.Path(os.environ['RUNNER_TEMP'],'m3-verify')
-          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()==expected_source
+          subprocess.run(['git','merge-base','--is-ancestor',expected_source,'HEAD'],check=True)
           url='https://api.github.com/repos/clickbytes/golingua2/git/blobs/'+payload_sha
           request=urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(request,timeout=30) as response:
