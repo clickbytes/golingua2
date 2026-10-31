@@ -1,0 +1,152 @@
+name: M5-M8 exact source verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/m5-m8-exact-verification.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.23.2'
+          cache: false
+      - name: Verify and apply checksum-pinned Go source patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          mkdir -p "$RUNNER_TEMP/m5-m8-verified"
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          out=pathlib.Path(os.environ['RUNNER_TEMP'], 'm5-m8-verified')
+          original='a2e1b4f1b928694968d8aa389471398adb482214'
+          assert subprocess.check_output(['git','rev-parse','HEAD^'],text=True).strip()==original
+          blob_sha='f1c5d733b33ff736eae660d033d669d5765aea51'
+          expected='ac9431f1f5e557f67328b387d95f1d06f45cb7e191f1f1b58632426a82817de3'
+          req=urllib.request.Request('https://api.github.com/repos/clickbytes/golingua2/git/blobs/'+blob_sha,
+              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=30) as response: blob=json.load(response)
+          packed=base64.b64decode(blob['content'])
+          assert hashlib.sha256(packed).hexdigest()==expected
+          assert hashlib.sha1(b'blob '+str(len(packed)).encode()+b'\0'+packed).hexdigest()==blob_sha
+          payload=json.loads(lzma.decompress(packed,memlimit=100*1024*1024))
+          assert payload['schema']==1 and payload['base']==original
+          manifest=payload['files']
+          assert len(manifest)==34 and len({x['path'] for x in manifest})==34
+          assert 'tests/a1/a1_cases_test.go' not in {x['path'] for x in manifest}
+          for entry in manifest:
+              file=pathlib.Path(entry['path'])
+              assert not file.is_absolute() and '..' not in file.parts and '.git' not in file.parts
+              if entry['base_blob'] is None:
+                  assert not file.exists(),entry['path']
+              else:
+                  assert subprocess.check_output(['git','hash-object',str(file)],text=True).strip()==entry['base_blob'],entry['path']
+          patch=out/'reviewed.patch'
+          patch.write_text(payload['patch'])
+          subprocess.run(['git','apply','--check','--binary',str(patch)],check=True)
+          subprocess.run(['git','apply','--binary',str(patch)],check=True)
+          for entry in manifest:
+              content=pathlib.Path(entry['path']).read_bytes()
+              calc=hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()
+              assert calc==entry['blob'] and hashlib.sha256(content).hexdigest()==entry['sha256'],entry['path']
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          (out/'source-sha.txt').write_text(os.environ['GITHUB_SHA'])
+          PY
+      - name: Technical Go acceptance and race
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/m5-m8-verified"
+          go version > "$out/go-version.txt"
+          git diff --check
+          test -z "$(gofmt -l cmd internal languages tests)"
+          go vet ./... > "$out/vet.log" 2>&1
+          go test ./... -count=1 -v > "$out/all-tests.log" 2>&1
+          go test -race ./... -count=1 > "$out/race.log" 2>&1
+          go test ./tests/a1 -run '^$' -bench '^BenchmarkA1TranslationRoundTrip$' -benchmem -benchtime=1s > "$out/benchmark.log" 2>&1
+          go build -o "$RUNNER_TEMP/golingua2" ./cmd/golingua2
+          "$RUNNER_TEMP/golingua2" --help > "$out/help.log"
+          "$RUNNER_TEMP/golingua2" --version > "$out/version.log"
+          sha256sum "$RUNNER_TEMP/golingua2" > "$out/binary-sha256.txt"
+          grep 'OBSERVED ONLY: PL→EN 100/100, EN→PL 100/100' "$out/all-tests.log"
+          echo 'format=0 vet=0 test=0 race=0 build=0 benchmark=0 cli=0' > "$out/exits.txt"
+      - name: Real CLI 200 translations and malformed-input contrasts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,os,pathlib,re,subprocess
+          out=pathlib.Path(os.environ['RUNNER_TEMP'],'m5-m8-verified')
+          exe=str(pathlib.Path(os.environ['RUNNER_TEMP'],'golingua2'))
+          s=pathlib.Path('tests/a1/a1_cases_test.go').read_text()
+          pattern=r'a1\((\d+),\s*"([^"]+)",\s*"([^"]+)",\s*"([^"]+)"(?:,\s*(NearDeixis|SingularAddressee|PluralAddressee))?\)'
+          rows=[(int(id),group,pl,en,flag) for id,group,pl,en,flag in re.findall(pattern,s)]
+          assert len(rows)==100 and sorted(id for id,_,_,_,_ in rows)==list(range(1,101))
+          observations=[]
+          for caseid,group,pl,en,flag in rows:
+              for source,target,text,want in [('pl','en',pl,en),('en','pl',en,pl)]:
+                  args=[exe,'translate','--from',source,'--to',target,'--text',text,'--json']
+                  if flag=='NearDeixis':args+=['--near']
+                  if flag=='SingularAddressee':args+=['--addressee','singular']
+                  if flag=='PluralAddressee':args+=['--addressee','plural']
+                  r=subprocess.run(args,capture_output=True,text=True,timeout=30)
+                  result=json.loads(r.stdout)
+                  surface=[candidate['text'] for candidate in (result.get('candidates') or [])]
+                  assert r.returncode==0 and want in surface,(caseid,args,r.returncode,result)
+                  observations.append({'id':caseid,'argv':args,'exit':r.returncode,'output':result,'stderr':r.stderr})
+          assert len(observations)==200
+          (out/'real-cli-200.json').write_text(json.dumps(observations,ensure_ascii=False,indent=2))
+          invalid=[('en','Yesterday a dog run.'),('en','Tomorrow a cat sleeps.'),('pl','Wczoraj mama gotował.'),('pl','Jutro kot będę spał.'),('pl','Jutro będę pracował.'),('en','It rained tomorrow.'),('en','Does this dog runs?'),('pl','Czy ten pies biegają?'),('pl','Nauczyciel nie czyta książka.'),('en','A dog sees an cat.')]
+          rejected=[]
+          for source,text in invalid:
+              args=[exe,'analyze','--from',source,'--text',text,'--json']
+              r=subprocess.run(args,capture_output=True,text=True,timeout=30)
+              result=json.loads(r.stdout)
+              assert r.returncode!=0 and not result.get('candidates'),(args,r.returncode,result)
+              rejected.append({'argv':args,'exit':r.returncode,'output':result,'stderr':r.stderr})
+          (out/'real-cli-contrasts.json').write_text(json.dumps(rejected,ensure_ascii=False,indent=2))
+          PY
+      - name: Preserve exact verified Git blobs without moving main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64,hashlib,json,os,pathlib,urllib.request
+          out=pathlib.Path(os.environ['RUNNER_TEMP'],'m5-m8-verified')
+          result=[]
+          for entry in json.loads((out/'manifest.json').read_text()):
+              content=pathlib.Path(entry['path']).read_bytes()
+              sha=hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()
+              assert sha==entry['blob']
+              request=urllib.request.Request('https://api.github.com/repos/clickbytes/golingua2/git/blobs',
+                  data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(request,timeout=30) as response:created=json.load(response)
+              assert created['sha']==sha
+              result.append({'path':entry['path'],'mode':'100644','type':'blob','sha':sha})
+          (out/'verified-tree-elements.json').write_text(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: golingua2-m5-m8-exact-${{ github.sha }}
+          path: ${{ runner.temp }}/m5-m8-verified/
+          retention-days: 7
+          if-no-files-found: warn
