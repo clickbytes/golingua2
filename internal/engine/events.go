@@ -39,6 +39,10 @@ func licensedFrame(s lexicon.Sense, frameID string) bool {
 }
 
 func (e *Engine) parseNounPhrase(p *compile.Pack, tokens []string, slotCase string, req context.Request, subject bool) []nounReading {
+	return e.parseNounPhraseMode(p, tokens, slotCase, req, subject, false)
+}
+
+func (e *Engine) parseNounPhraseMode(p *compile.Pack, tokens []string, slotCase string, req context.Request, subject, bareSite bool) []nounReading {
 	if len(tokens) == 0 || len(tokens) > 2 {
 		return nil
 	}
@@ -108,10 +112,10 @@ func (e *Engine) parseNounPhrase(p *compile.Pack, tokens []string, slotCase stri
 			case "the":
 				def = "definite"
 			case "":
-				if countability == "count" && form.Features.Number == "singular" {
+				if countability == "count" && form.Features.Number == "singular" && !bareSite {
 					continue
 				}
-				if countability == "count" {
+				if countability == "count" && !bareSite {
 					def = "indefinite"
 				}
 			}
@@ -334,6 +338,14 @@ func addAssumption(node sem.NodeID, field, value string) []Annotation {
 }
 
 func (e *Engine) renderEventNP(p *compile.Pack, ref sem.Node, grammaticalCase string) []phraseOption {
+	return e.renderEventNPClass(p, ref, grammaticalCase, "")
+}
+
+func (e *Engine) renderEventNPClass(p *compile.Pack, ref sem.Node, grammaticalCase, siteClass string) []phraseOption {
+	if siteClass != "" && ref.Person != "" {
+		return nil
+	}
+
 	if ref.Person != "" {
 		out := []phraseOption{}
 		for _, lex := range selectLexemes(p, ref.Concept, lexicon.Pronoun) {
@@ -369,6 +381,9 @@ func (e *Engine) renderEventNP(p *compile.Pack, ref sem.Node, grammaticalCase st
 	}
 	out := []phraseOption{}
 	for _, lex := range selectLexemes(p, ref.Concept, lexicon.Noun) {
+		if siteClass != "" && lexicalSiteClass(lex) != siteClass {
+			continue
+		}
 		countability := lex.Countability
 		if countability == "" {
 			countability = "count"

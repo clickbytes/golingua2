@@ -11,16 +11,18 @@ import (
 type Slot string
 
 const (
-	Demonstrative     Slot = "demonstrative"
-	Copula            Slot = "copula"
-	Article           Slot = "article"
-	Noun              Slot = "noun"
-	Adjective         Slot = "adjective"
-	SubjectPhrase     Slot = "subject_phrase"
-	PredicateVerb     Slot = "predicate_verb"
-	ObjectPhrase      Slot = "object_phrase"
-	NegationAuxiliary Slot = "negation_auxiliary"
-	NegationMarker    Slot = "negation_marker"
+	Demonstrative      Slot = "demonstrative"
+	Copula             Slot = "copula"
+	Article            Slot = "article"
+	Noun               Slot = "noun"
+	Adjective          Slot = "adjective"
+	SubjectPhrase      Slot = "subject_phrase"
+	PredicateVerb      Slot = "predicate_verb"
+	ObjectPhrase       Slot = "object_phrase"
+	LocationSitePhrase Slot = "location_site_phrase"
+	AdpositionPhrase   Slot = "adposition_phrase"
+	NegationAuxiliary  Slot = "negation_auxiliary"
+	NegationMarker     Slot = "negation_marker"
 )
 
 type Frame struct {
@@ -83,9 +85,48 @@ func ValidateFrame(f Frame, catalog *core.Catalog) error {
 	return nil
 }
 
+// LocationFrame maps one neutral relation to language-local case/adposition
+// and an attested lexical site class, without naming the sentence participants.
+type LocationFrame struct {
+	ID           string
+	Predicate    core.ID
+	LocatedRole  string
+	SiteRole     string
+	SiteClass    string
+	SiteCase     string
+	AdpositionID string
+	BareSite     bool
+}
+
+func ValidateLocationFrame(f LocationFrame, catalog *core.Catalog) error {
+	if f.ID == "" || f.Predicate == "" || f.LocatedRole == "" || f.SiteRole == "" ||
+		f.LocatedRole == f.SiteRole || f.SiteClass == "" || f.SiteCase == "" || f.AdpositionID == "" || catalog == nil {
+		return fmt.Errorf("invalid location frame %q", f.ID)
+	}
+	if len(f.SiteClass) > 64 {
+		return fmt.Errorf("invalid location site class %q", f.SiteClass)
+	}
+	for _, r := range f.SiteClass {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return fmt.Errorf("invalid location site class %q", f.SiteClass)
+		}
+	}
+	if f.SiteCase != "nominative" && f.SiteCase != "locative" && f.SiteCase != "instrumental" && f.SiteCase != "genitive" {
+		return fmt.Errorf("invalid site case %q", f.SiteCase)
+	}
+	def, ok := catalog.Lookup(f.Predicate)
+	if !ok || def.Kind != core.Predicate || !def.StateRelation || def.ValueKind != "" || len(def.Roles) != 2 ||
+		def.Roles[0].Name != f.LocatedRole || def.Roles[1].Name != f.SiteRole ||
+		def.Roles[0].Target != core.Entity || def.Roles[1].Target != core.Entity {
+		return fmt.Errorf("location frame %q mismatches typed relation", f.ID)
+	}
+	return nil
+}
+
 type Element struct{ Slot Slot }
 type Pattern struct {
 	Event      bool
+	Location   bool // spatial relation, not lexical event or property attribution
 	Negated    bool // this construction covers an exact Not scope
 	ID         string
 	FrameID    string
@@ -99,6 +140,21 @@ type Pattern struct {
 func Validate(p Pattern) error {
 	if p.ID == "" || p.FrameID == "" || len(p.Sequence) == 0 || len(p.Sequence) > 12 || (!p.Analyze && !p.Realize) {
 		return fmt.Errorf("invalid construction declaration %q", p.ID)
+	}
+	if p.Location {
+		if p.Event || p.Negated || p.Predicate != "" || p.DemoGender != "" {
+			return fmt.Errorf("location pattern mixes unrelated policies %q", p.ID)
+		}
+		expected := []Slot{SubjectPhrase, Copula, AdpositionPhrase, LocationSitePhrase}
+		if len(p.Sequence) != len(expected) {
+			return fmt.Errorf("incomplete location construction %q", p.ID)
+		}
+		for i, slot := range expected {
+			if p.Sequence[i].Slot != slot {
+				return fmt.Errorf("invalid location sequence %q", p.ID)
+			}
+		}
+		return nil
 	}
 	if p.Event {
 		if p.DemoGender != "" || p.Predicate != "" {

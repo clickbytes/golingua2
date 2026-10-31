@@ -254,7 +254,7 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 	}
 	found := make(map[string]Candidate)
 	for _, pat := range p.Constructions {
-		if pat.Event {
+		if pat.Event || pat.Location {
 			continue
 		}
 		if !pat.Analyze || len(pat.Sequence) != len(tokens) {
@@ -319,6 +319,22 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 				return fail(status.ResourceLimit, "ANALYSIS_WORK_LIMIT", "analysis search work budget exceeded")
 			}
 			return fail(status.ResourceLimit, "CANDIDATE_LIMIT", "analysis candidate limit exceeded")
+		}
+	}
+	// Spatial relations use the same Meaning IR and the same result envelope.
+	for _, pat := range p.Constructions {
+		if !pat.Location || !pat.Analyze {
+			continue
+		}
+		for _, candidate := range e.analyzeLocationPattern(p, pat, tokens, req) {
+			key, err := sem.CanonicalKey(candidate.Meaning, e.catalog)
+			if err != nil {
+				continue
+			}
+			found[key] = candidate
+			if len(found) > maxCandidates {
+				return fail(status.ResourceLimit, "CANDIDATE_LIMIT", "location analysis exceeded candidate bound")
+			}
 		}
 	}
 	// Event constructions reuse this Meaning IR and the same result envelope.
@@ -444,6 +460,9 @@ func (e *Engine) Realize(language string, meaning sem.Meaning) Result {
 	for _, n := range meaning.Nodes {
 		if n.ID != meaning.Root {
 			continue
+		}
+		if n.Kind == sem.State && len(n.Arguments) == 2 && n.Value == "" {
+			return e.realizeLocation(p, meaning, n.ID)
 		}
 		if n.Kind == sem.Event {
 			return e.realizeEvent(p, meaning, n.ID, false)

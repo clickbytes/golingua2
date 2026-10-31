@@ -26,6 +26,9 @@ type Definition struct {
 	Kind      Kind
 	Roles     []Role
 	ValueKind Kind
+	// StateRelation permits a non-event relational predicate as a finite
+	// state without a separate property Value. It does not make events stative.
+	StateRelation bool
 }
 
 type Catalog struct{ byID map[ID]Definition }
@@ -42,10 +45,10 @@ func NewCatalog(defs []Definition) (*Catalog, error) {
 		if _, ok := c.byID[d.ID]; ok {
 			return nil, fmt.Errorf("duplicate concept: %q", d.ID)
 		}
-		if d.Kind != Predicate && (len(d.Roles) != 0 || d.ValueKind != "") {
+		if d.Kind != Predicate && (len(d.Roles) != 0 || d.ValueKind != "" || d.StateRelation) {
 			return nil, fmt.Errorf("non-predicate has signature: %q", d.ID)
 		}
-		if d.Kind == Predicate && (len(d.Roles) == 0 || len(d.Roles) > 8 || (d.ValueKind != "" && d.ValueKind != Entity && d.ValueKind != Property)) {
+		if d.Kind == Predicate && (len(d.Roles) == 0 || len(d.Roles) > 8 || (d.ValueKind != "" && d.ValueKind != Entity && d.ValueKind != Property) || (d.StateRelation && (d.ValueKind != "" || len(d.Roles) != 2 || d.Roles[0].Target != Entity || d.Roles[1].Target != Entity))) {
 			return nil, fmt.Errorf("missing predicate signature: %q", d.ID)
 		}
 		seen := map[string]bool{}

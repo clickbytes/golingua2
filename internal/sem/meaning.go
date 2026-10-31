@@ -112,14 +112,22 @@ func Validate(m Meaning, catalog *core.Catalog) error {
 				return fmt.Errorf("invalid predicate node %q", n.ID)
 			}
 			if n.Kind == State {
-				if def.ValueKind == "" || n.Tense != "" {
-					return fmt.Errorf("invalid state %q", n.ID)
+				if n.Tense != "" {
+					return fmt.Errorf("invalid state tense %q", n.ID)
 				}
-				v, ok := catalog.Lookup(n.Value)
-				if !ok || v.Kind != def.ValueKind {
-					return fmt.Errorf("invalid predicate value at %q", n.ID)
+				if def.ValueKind == "" {
+					// A relation is a state with a typed role signature and
+					// no property value; its identity is the relation concept.
+					if !def.StateRelation || n.Value != "" || len(def.Roles) != 2 {
+						return fmt.Errorf("invalid relational state %q", n.ID)
+					}
+				} else {
+					v, ok := catalog.Lookup(n.Value)
+					if !ok || v.Kind != def.ValueKind {
+						return fmt.Errorf("invalid predicate value at %q", n.ID)
+					}
 				}
-			} else if def.ValueKind != "" || n.Value != "" || n.Tense != "present" {
+			} else if def.StateRelation || def.ValueKind != "" || n.Value != "" || n.Tense != "present" {
 				return fmt.Errorf("invalid event %q", n.ID)
 			}
 			if len(n.Arguments) != len(def.Roles) {

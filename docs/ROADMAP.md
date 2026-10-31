@@ -8,7 +8,7 @@
 | M1 ✓ | CORE/IR, PL+EN klasy noun/copula/adjective, NP i identyfikacja | 001–020 | 20 | 6 przepływów / każdy z 20 |
 | M2 ✓ | `have`, czasownik, walencja, regularne NP/VP | 021–050 | 50 | +30 scenariuszy |
 | M3 ✓ | `Not`, EN auxiliary, polska rekcja pod negacją | 051–060 | 60 | +10 i kontrasty zakresu |
-| M4 | Relacje przestrzenne i PP | 071–080 | 70 | +10, bez na→on globalnie |
+| M4 ✓ | Relacje przestrzenne i PP | 071–080 | 70 | +10, bez na→on globalnie |
 | M5 | Ilość 1–5, dokładne referenty, egzystencja | 081–090 | 80 | +10, poprawna zgoda/count |
 | M6 | Pytania polar/WH/where/how-many, jeden `Ask` | 061–070 | 90 | +10, brak wymyślonej odpowiedzi |
 | M7 | Przeszłość, przyszłość, odniesienie czasowe | 091–100 | 100 | 100 scenariuszy ×6, brak maskowania GAP |

@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/clickbytes/golingua2/internal/core"
+	"github.com/clickbytes/golingua2/internal/features"
 	"github.com/clickbytes/golingua2/internal/grammar"
 	"github.com/clickbytes/golingua2/internal/lexicon"
 	"github.com/clickbytes/golingua2/internal/morph"
@@ -23,24 +24,26 @@ type Specials struct {
 }
 
 type Definition struct {
-	Language      string
-	Lexemes       []lexicon.Entry
-	Senses        []lexicon.Sense
-	MorphClasses  []morph.Class
-	Frames        []grammar.Frame
-	EventFrames   []grammar.EventFrame
-	Constructions []grammar.Pattern
-	Specials      Specials
+	Language       string
+	Lexemes        []lexicon.Entry
+	Senses         []lexicon.Sense
+	MorphClasses   []morph.Class
+	Frames         []grammar.Frame
+	EventFrames    []grammar.EventFrame
+	LocationFrames []grammar.LocationFrame
+	Constructions  []grammar.Pattern
+	Specials       Specials
 }
 
 type Pack struct {
-	frames        map[string]grammar.Frame
-	eventFrames   map[string]grammar.EventFrame
-	Language      string
-	Lexicon       *lexicon.Index
-	Morph         *morph.Generator
-	Constructions []grammar.Pattern
-	Specials      Specials
+	frames         map[string]grammar.Frame
+	eventFrames    map[string]grammar.EventFrame
+	locationFrames map[string]grammar.LocationFrame
+	Language       string
+	Lexicon        *lexicon.Index
+	Morph          *morph.Generator
+	Constructions  []grammar.Pattern
+	Specials       Specials
 }
 
 func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
@@ -78,7 +81,7 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 			return nil, fmt.Errorf("invalid definite article")
 		}
 	}
-	if len(d.Frames) == 0 || len(d.Frames)+len(d.EventFrames) > 1024 {
+	if len(d.Frames) == 0 || len(d.Frames)+len(d.EventFrames)+len(d.LocationFrames) > 1024 {
 		return nil, fmt.Errorf("invalid valency frame count")
 	}
 	frames := make(map[string]grammar.Frame, len(d.Frames))
@@ -103,6 +106,51 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 			return nil, fmt.Errorf("duplicate frame %q", f.ID)
 		}
 		eventFrames[f.ID] = f
+	}
+	locationFrames := make(map[string]grammar.LocationFrame, len(d.LocationFrames))
+	for _, f := range d.LocationFrames {
+		if err := grammar.ValidateLocationFrame(f, catalog); err != nil {
+			return nil, err
+		}
+		if _, present := frames[f.ID]; present {
+			return nil, fmt.Errorf("duplicate frame %q", f.ID)
+		}
+		if _, present := eventFrames[f.ID]; present {
+			return nil, fmt.Errorf("duplicate frame %q", f.ID)
+		}
+		if _, present := locationFrames[f.ID]; present {
+			return nil, fmt.Errorf("duplicate location frame %q", f.ID)
+		}
+		adp, ok := li.Lookup(f.AdpositionID)
+		if !ok || adp.POS != lexicon.Adposition {
+			return nil, fmt.Errorf("missing location adposition %q", f.AdpositionID)
+		}
+		if _, err := mi.Generate(adp.ID, features.Spec{}); err != nil {
+			return nil, fmt.Errorf("location adposition %q: %w", adp.ID, err)
+		}
+		// A site-class route must have at least one noun with an actual
+		// inflected form, not just an arbitrary class name on a frame.
+		eligible := false
+		for _, entry := range li.Entries() {
+			if entry.POS != lexicon.Noun {
+				continue
+			}
+			class := entry.SiteClass
+			if class == "" {
+				class = "general"
+			}
+			if class != f.SiteClass {
+				continue
+			}
+			if _, err := mi.Generate(entry.ID, features.Spec{Number: "singular", Case: f.SiteCase}); err == nil {
+				eligible = true
+				break
+			}
+		}
+		if !eligible {
+			return nil, fmt.Errorf("location frame %q has no inflectable site nouns", f.ID)
+		}
+		locationFrames[f.ID] = f
 	}
 	// A verb sense is bound to its exact frame, whose roles must match its
 	// independent CORE predicate signature. No family may license all verbs.
@@ -154,6 +202,14 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 			return nil, fmt.Errorf("duplicate construction %q", p.ID)
 		}
 		seen[p.ID] = true
+		if p.Location {
+			if _, ok := locationFrames[p.FrameID]; !ok {
+				return nil, fmt.Errorf("location construction %q has no approved frame", p.ID)
+			}
+			p.Sequence = append([]grammar.Element(nil), p.Sequence...)
+			constructions[i] = p
+			continue
+		}
 		if p.Event {
 			f, ok := eventFrames[p.FrameID]
 			if !ok || p.Predicate != "" {
@@ -232,7 +288,7 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 		constructions[i] = p
 	}
 	sort.Slice(constructions, func(i, j int) bool { return constructions[i].ID < constructions[j].ID })
-	return &Pack{frames: frames, eventFrames: eventFrames, Language: d.Language, Lexicon: li, Morph: mi, Constructions: constructions, Specials: d.Specials}, nil
+	return &Pack{frames: frames, eventFrames: eventFrames, locationFrames: locationFrames, Language: d.Language, Lexicon: li, Morph: mi, Constructions: constructions, Specials: d.Specials}, nil
 }
 
 // Frame returns a copied immutable compiled binding, not mutable declaration data.
@@ -250,5 +306,14 @@ func (p *Pack) EventFrame(id string) (grammar.EventFrame, bool) {
 		return grammar.EventFrame{}, false
 	}
 	f, ok := p.eventFrames[id]
+	return f, ok
+}
+
+// LocationFrame resolves an exact, immutable spatial construction license.
+func (p *Pack) LocationFrame(id string) (grammar.LocationFrame, bool) {
+	if p == nil {
+		return grammar.LocationFrame{}, false
+	}
+	f, ok := p.locationFrames[id]
 	return f, ok
 }

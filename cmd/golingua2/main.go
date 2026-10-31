@@ -15,7 +15,7 @@ import (
 	"github.com/clickbytes/golingua2/languages/pl"
 )
 
-const version = "0.3.0-m3"
+const version = "0.4.0-m4"
 
 func usage() {
 	fmt.Fprintln(os.Stdout, "GoLingua 2 — compiled procedural PL ↔ Semantic IR ↔ EN")
@@ -23,7 +23,7 @@ func usage() {
 	fmt.Fprintln(os.Stdout, "  golingua2 translate --from pl --to en --text 'To jest kot.' --near [--json]")
 	fmt.Fprintln(os.Stdout, "  golingua2 analyze --from en --text 'This cat is black.' [--json]")
 	fmt.Fprintln(os.Stdout, "  golingua2 --version")
-	fmt.Fprintln(os.Stdout, "M1–M3: classification, properties, present event frames and event negation; A1 001–060.")
+	fmt.Fprintln(os.Stdout, "M1–M4: identification, properties, present events, Not, and spatial relations; 70 A1 scenarios.")
 }
 func run() int {
 	if len(os.Args) <= 1 || os.Args[1] == "help" || os.Args[1] == "--help" || os.Args[1] == "-h" {

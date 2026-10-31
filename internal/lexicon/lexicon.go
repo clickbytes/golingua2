@@ -21,6 +21,7 @@ const (
 	Pronoun    POS = "pronoun"
 	Auxiliary  POS = "auxiliary"
 	Particle   POS = "particle"
+	Adposition POS = "adposition"
 )
 
 type Entry struct {
@@ -34,7 +35,10 @@ type Entry struct {
 	// Onset is lexical phonology, not an English spelling heuristic.
 	Onset string
 	// Countability determines article/number behavior without inventing cardinality.
-	Countability  string // "count", "mass", "plural_only" for nouns
+	Countability string // "count", "mass", "plural_only" for nouns
+	// SiteClass is a lexical selection class (e.g. institution/tree/general),
+	// never a CORE predicate or a sentence-specific condition.
+	SiteClass     string
 	PronounPerson string
 	PronounNumber string
 	PronounGender string
@@ -63,7 +67,7 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 	}
 	i := &Index{entries: make(map[string]Entry, len(entries)), senses: make(map[string]Sense, len(senses)), byConcept: make(map[core.ID][]Entry), byLexeme: make(map[string][]Sense)}
 	for _, e := range entries {
-		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun && e.POS != Auxiliary && e.POS != Particle) {
+		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun && e.POS != Auxiliary && e.POS != Particle && e.POS != Adposition) {
 			return nil, fmt.Errorf("invalid lexeme %q", e.ID)
 		}
 		if _, ok := i.entries[e.ID]; ok {
@@ -74,6 +78,9 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		}
 		if e.POS == Noun && e.Countability != "" && e.Countability != "count" && e.Countability != "mass" && e.Countability != "plural_only" {
 			return nil, fmt.Errorf("invalid noun countability %q", e.ID)
+		}
+		if e.SiteClass != "" && (e.POS != Noun || !validSiteClass(e.SiteClass)) {
+			return nil, fmt.Errorf("invalid site class on %q", e.ID)
 		}
 		if e.POS == Pronoun && (e.PronounPerson != "first" && e.PronounPerson != "second" && e.PronounPerson != "third" || (e.PronounNumber != "" && e.PronounNumber != "singular" && e.PronounNumber != "plural")) {
 			return nil, fmt.Errorf("invalid pronoun properties %q", e.ID)
@@ -96,7 +103,7 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		if !ok {
 			return nil, fmt.Errorf("unbound sense %q", s.ID)
 		}
-		if e.POS == Auxiliary || e.POS == Particle {
+		if e.POS == Auxiliary || e.POS == Particle || e.POS == Adposition {
 			return nil, fmt.Errorf("structural operator lexeme cannot claim a semantic predicate: %q", s.ID)
 		}
 		d, ok := catalog.Lookup(s.Concept)
@@ -200,3 +207,17 @@ func copyMap[K comparable, V any](m map[K]V) map[K]V {
 
 // OverrideKey is the stable key for one exceptional morphological form.
 func OverrideKey(f features.Spec) string { return f.Key() }
+
+// Language packs own the site-class vocabulary; the neutral lexicon validates
+// shape, not an English/Polish list of concepts or prepositions.
+func validSiteClass(s string) bool {
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
+}

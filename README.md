@@ -2,9 +2,11 @@
 
 Proceduralny prototyp tłumacza **PL ↔ jeden typowany Semantic IR ↔ EN** w Go.
 
-**Stan: M0–M3 zweryfikowane w ograniczonym zakresie A1.** Pierwsze 60 z 100 ręcznie dobranych par A1 przechodzi sześć niezależnych ścieżek odbioru, czyli **360/600 wymaganych ścieżek**. Dla pozostałych 40 scenariuszy nie deklarujemy obsługi ani PASS. Nie jest to certyfikacja CEFR ani pełny translator języka naturalnego.
+**Stan: M0–M4 zweryfikowane w ograniczonym zakresie A1.** 70 z 100 ręcznie dobranych par A1 przechodzi sześć niezależnych ścieżek odbioru, czyli **420/600 wymaganych ścieżek**. Dla pozostałych 30 scenariuszy nie deklarujemy obsługi ani PASS. Nie jest to certyfikacja CEFR ani pełny translator języka naturalnego.
 
 ## Pierwszy działający przekrój
+
+- M4: typowane relacje przestrzenne z dokładnymi rolami `located/site`, klasą miejsca, przypadkiem i językowym przyimkiem. `Kot jest w domu.` / `The cat is in the house.`, `Uczeń jest w szkole.` / `The student is at school.`, `Ptak jest na drzewie.` / `The bird is in the tree.`. Multiword `in front of` / `next to` to licencjonowane adpozycje, nie translacja stringów.
 
 - M3: negacja zakresu zdarzenia `Not(Event)`, polskie `nie` + dopełniacz pod zadeklarowaną ramą, angielskie `do/does not + base`, z pozytywnym i negatywnym przebiegiem przez ten sam IR.
 - M2: posiadanie „Mam książkę.” / „I have a book.”, ramy przechodnie SVO i nieprzechodnie SV; celownik „pomaga dziecku” i liczba nieokreślona w `drzwi`.
@@ -30,7 +32,7 @@ go run ./cmd/golingua2 translate --from pl --to en --text 'Lekarz pomaga dziecku
 go run ./cmd/golingua2 translate --from en --to pl --text 'You have a dog.' --addressee singular
 ```
 
-Przykłady `M1–M3` podlegają pełnym testom analizy źródła, niezależnego IR→PL/EN i integracji PL→EN/EN→PL. `tests/a1/a1_cases_test.go` pozostaje **jedynym katalogiem 100 zdań**, zapisanym w Go — nie mamy pliku JSON ani ukrytych szablonów tłumaczeń.
+Przykłady `M1–M4` podlegają pełnym testom analizy źródła, niezależnego IR→PL/EN i integracji PL→EN/EN→PL. `tests/a1/a1_cases_test.go` pozostaje **jedynym katalogiem 100 zdań**, zapisanym w Go — nie mamy pliku JSON ani ukrytych szablonów tłumaczeń.
 
 ## Architektura i granice
 
@@ -41,7 +43,7 @@ Przykłady `M1–M3` podlegają pełnym testom analizy źródła, niezależnego 
 - [Zrealizowany zakres i ograniczenia](docs/IMPLEMENTATION-STATUS.md)
 - [Zasady pracy](AGENTS.md)
 
-**Pozostałe 40 par (lokalizacja, ilość, pytania i czas) nie są zaimplementowane.** Wspólne klasy i kompilator są podstawą do ich dalszej realizacji, ale nie zastępują potrzebnych reguł gramatycznych i semantycznych. Kontrole techniczne nie oznaczają akceptacji językowej właściciela.
+**Pozostałe 30 par (ilość, pytania i czas) nie są zaimplementowane.** Wspólne klasy i kompilator są podstawą do ich dalszej realizacji, ale nie zastępują potrzebnych reguł gramatycznych i semantycznych. Kontrole techniczne nie oznaczają akceptacji językowej właściciela.
 
 ## Zakres i pochodzenie wariantów M2
 
@@ -59,3 +61,11 @@ Przykłady `M1–M3` podlegają pełnym testom analizy źródła, niezależnego 
 - `Nie mam samochodu.` i `Nie mamy wody.` używają tej samej deklaracji pomijania podmiotu co pozytywne `Mam/Mamy`; nie wnioskujemy osoby z brakującego rzeczownika.
 - Kolejnych 10 scenariuszy ma sześć niezależnych ścieżek; testy kontrastowe sprawdzają złe `do/does`, nieodmieniony czasownik z `does`, polski błędny biernik oraz utratę operatora z grafu. Przykładowe `obserwować/observe` w negacji działa po dodaniu danych, nie dodatkowego `switch`.
 - Zasięg pozostaje ograniczony do prostych pojedynczych zdarzeń w teraźniejszości. `Not(State)`, zagnieżdżona negacja, do-support w pytaniach, czas przeszły i scope kwantyfikacji nie są jeszcze zaimplementowane.
+
+## Dostawa M4 — relacje przestrzenne
+
+- Siedem neutralnych relacji i dokładne role `located/site` w tym samym `sem.Meaning` (stan relacyjny, nie zdarzenie). Kompilator odróżnia `StateRelation` od czasownikowego Event.
+- Deklaratywne, językowe `LocationFrame` wybierają `w/na/pod/przed/za/obok` i ich odpowiedniki EN wraz z przypadkiem i klasą miejsca. EN `at school` ma licencję na bare institutional site; PL `na drzewie` i EN `in the tree` dzielą neutralne `at_site` z klasą drzewa.
+- Nowe rzeczowniki `kuchnia/kitchen`, `drzewo/tree`, `pokój/room` oraz komórki morfologii przypadków, nie kopie pełnych zdań. Dodatkowe kombinacje `Kot jest pod stołem.`, `Książka jest za domem.` przechodzą bez modyfikacji parsera.
+- 10 nowych przykładów A1 (071–080) ma sześć niezależnie testowanych ścieżek każdy. Kontrole sprawdzają zamianę uczestników, różne relacje, zły przypadek, brak przyimka, złą zgodę, dodatkowe człony i fałszywe licencje pakietu. `tests/a1/a1_cases_test.go` pozostaje nietknięty.
+- **Nie obsługujemy dowolnego PP** ani pytania `where`, wielu miejsc jednocześnie, wszystkich przyimków, ruchu i relacji 3D. Testy ograniczonej konstrukcji nie są certyfikacją pełnego A1; przyjęcie językowe właściciela oddzielnie.
