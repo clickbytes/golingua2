@@ -127,7 +127,7 @@ func (e *Engine) realizeLocation(p *compile.Pack, m sem.Meaning, root sem.NodeID
 	relation := byID[root]
 	produced := map[string]Candidate{}
 	for _, pat := range p.Constructions {
-		if !pat.Location || !pat.Realize {
+		if !pat.Location || pat.Existential || !pat.Realize {
 			continue
 		}
 		frame, ok := p.LocationFrame(pat.FrameID)

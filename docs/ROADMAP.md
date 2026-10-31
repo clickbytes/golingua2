@@ -1,3 +1,5 @@
+> **Stan wydania:** M0–M8 zakończone technicznie dla zamkniętego zestawu 100 par A1: 600/600 niezależnych ścieżek. Odrębna akceptacja lingwistyczna właściciela: NOT EVALUATED. Poza katalogiem zachowanie jest ograniczone do licencjonowanych konstrukcji; pełne A1 nie jest deklarowane.
+
 # GoLingua 2 — kolejność implementacji na 100 przykładach A1
 
 **Zasada:** jeden writer i małe, sprawdzalne integracje na bazie jednego kontraktu. Nie programujemy 100 zdań po kolei; najpierw budujemy algorytmy, a grupy pojawiają się jako ich konsekwencje.
@@ -9,10 +11,10 @@
 | M2 ✓ | `have`, czasownik, walencja, regularne NP/VP | 021–050 | 50 | +30 scenariuszy |
 | M3 ✓ | `Not`, EN auxiliary, polska rekcja pod negacją | 051–060 | 60 | +10 i kontrasty zakresu |
 | M4 ✓ | Relacje przestrzenne i PP | 071–080 | 70 | +10, bez na→on globalnie |
-| M5 | Ilość 1–5, dokładne referenty, egzystencja | 081–090 | 80 | +10, poprawna zgoda/count |
-| M6 | Pytania polar/WH/where/how-many, jeden `Ask` | 061–070 | 90 | +10, brak wymyślonej odpowiedzi |
-| M7 | Przeszłość, przyszłość, odniesienie czasowe | 091–100 | 100 | 100 scenariuszy ×6, brak maskowania GAP |
-| M8 | Stabilizacja, porównanie, wydajność i dokumentacja | Bez nowych zdań | 100 | powtarzalne CI i benchmarks CPU |
+| M5 ✓ | Ilość 1–5, dokładne referenty, egzystencja | 081–090 | 80 | +10, poprawna zgoda/count |
+| M6 ✓ | Pytania polar/WH/where/how-many, jeden `Ask` | 061–070 | 90 | +10, brak wymyślonej odpowiedzi |
+| M7 ✓ | Przeszłość, przyszłość, odniesienie czasowe | 091–100 | 100 | 100 scenariuszy ×6, brak maskowania GAP |
+| M8 ✓ | Stabilizacja, porównanie, wydajność i dokumentacja | Bez nowych zdań | 100 | powtarzalne CI i benchmarks CPU |
 
 ## M0 — bootstrap i granice API
 

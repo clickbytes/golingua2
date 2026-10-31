@@ -21,6 +21,11 @@ type Specials struct {
 	DemoDenotesProximal bool
 	NegationMarker      string
 	NegationAuxiliary   string
+	ExistentialMarker   string
+	QuestionWords       map[string]string
+	TimeMarkers         map[string]string
+	FutureAuxiliary     string
+	WeatherExpletive    string
 }
 
 type Definition struct {
@@ -98,6 +103,12 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 	for _, f := range d.EventFrames {
 		if err := grammar.ValidateEventFrame(f); err != nil {
 			return nil, err
+		}
+		if f.Weather {
+			entity, ok := catalog.Lookup(f.WeatherSubjectConcept)
+			if !ok || entity.Kind != core.Entity {
+				return nil, fmt.Errorf("invalid weather subject concept for %s", f.ID)
+			}
 		}
 		if _, exists := eventFrames[f.ID]; exists {
 			return nil, fmt.Errorf("duplicate event frame %q", f.ID)
@@ -203,6 +214,12 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 		}
 		seen[p.ID] = true
 		if p.Location {
+			if p.Existential && d.Language == "en" {
+				existential, exists := li.Lookup(d.Specials.ExistentialMarker)
+				if !exists || existential.POS != lexicon.Particle {
+					return nil, fmt.Errorf("missing English existential marker for %s", p.ID)
+				}
+			}
 			if _, ok := locationFrames[p.FrameID]; !ok {
 				return nil, fmt.Errorf("location construction %q has no approved frame", p.ID)
 			}
@@ -245,8 +262,30 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 					}
 				}
 			}
+			if p.Temporal && p.Weather != f.Weather {
+				return nil, fmt.Errorf("weather frame/construction mismatch in %q", p.ID)
+			}
 			if !hasSubject && !f.AllowImplicitSubject {
 				return nil, fmt.Errorf("unlicensed implicit subject in %q", p.ID)
+			}
+			if p.Temporal {
+				marker := d.Specials.TimeMarkers[p.TemporalTense]
+				lex, ok := li.Lookup(marker)
+				if !ok || lex.POS != lexicon.Particle {
+					return nil, fmt.Errorf("missing temporal marker for %q", p.ID)
+				}
+				if p.TemporalTense == "future" {
+					aux, ok := li.Lookup(d.Specials.FutureAuxiliary)
+					if !ok || aux.POS != lexicon.Auxiliary {
+						return nil, fmt.Errorf("missing future auxiliary for %q", p.ID)
+					}
+				}
+				if p.Weather && d.Language == "en" {
+					exp, ok := li.Lookup(d.Specials.WeatherExpletive)
+					if !ok || exp.POS != lexicon.Particle {
+						return nil, fmt.Errorf("missing weather expletive %q", p.ID)
+					}
+				}
 			}
 			if hasObject != (f.ObjectRole != "") {
 				return nil, fmt.Errorf("event construction %q incomplete arguments", p.ID)
@@ -287,6 +326,24 @@ func Compile(d Definition, catalog *core.Catalog) (*Pack, error) {
 		p.Sequence = append([]grammar.Element(nil), p.Sequence...)
 		constructions[i] = p
 	}
+	if len(d.Specials.QuestionWords) > 0 {
+		required := []string{"polar", "who", "what", "where", "how_many"}
+		for _, kind := range required {
+			id := d.Specials.QuestionWords[kind]
+			x, ok := li.Lookup(id)
+			if id == "" || !ok || x.POS != lexicon.Particle {
+				return nil, fmt.Errorf("invalid question marker %s for %s", kind, d.Language)
+			}
+			if _, err := mi.Generate(id, features.Spec{}); err != nil {
+				return nil, fmt.Errorf("question marker %s: %w", kind, err)
+			}
+		}
+		if len(d.Specials.QuestionWords) != len(required) {
+			return nil, fmt.Errorf("unknown question kind in %s", d.Language)
+		}
+	}
+	d.Specials.QuestionWords = cloneQuestionWords(d.Specials.QuestionWords)
+	d.Specials.TimeMarkers = cloneQuestionWords(d.Specials.TimeMarkers)
 	sort.Slice(constructions, func(i, j int) bool { return constructions[i].ID < constructions[j].ID })
 	return &Pack{frames: frames, eventFrames: eventFrames, locationFrames: locationFrames, Language: d.Language, Lexicon: li, Morph: mi, Constructions: constructions, Specials: d.Specials}, nil
 }
@@ -316,4 +373,15 @@ func (p *Pack) LocationFrame(id string) (grammar.LocationFrame, bool) {
 	}
 	f, ok := p.locationFrames[id]
 	return f, ok
+}
+
+func cloneQuestionWords(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }

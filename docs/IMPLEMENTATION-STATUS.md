@@ -1,66 +1,35 @@
-# M0 + M1 + M2 + M3 + M4 — potwierdzony zakres GoLingua 2
+# GoLingua 2 — techniczny odbiór M0–M8
 
-## Co działa
+**Stan:** pierwsze 100 ręcznie wybranych par A1 przeszło sześć niezależnych ścieżek na przypadek — **100/100 i 600/600**. Nie jest to certyfikacja CEFR, pełny translator języka naturalnego ani automatyczna akceptacja językowa właściciela (`NOT EVALUATED`).
 
-- 100 par w jednej tabeli `tests/a1/a1_cases_test.go`, 10 grup po 10, bez JSON ze zdaniami;
-- typowany katalog CORE i jeden graf `sem.Meaning`, lokalne ID wystąpień, walidacja sygnatur ról, porównanie niezależne od kolejności i nazw węzłów;
-- jeden kompilator dwóch pakietów, z indeksem leksykalnym, osobnymi Sense/Frame/Construction/Direction i niemutowalnymi planami morfologii;
-- proceduralne klasy: podstawowe polskie rodzaje rzeczownika, przymiotnik odmieniający się przez rodzaj, zaimek wskazujący, polska kopula; angielski rzeczownik regularny, przymiotnik nieodmienny, `a/an` z jawnej cechy fonetycznej, `this` i `is`;
-- 70 niezależnie opisanych w Go znaczeń M1–M4 (10 identyfikacji, 10 cech, 30 zdarzeń, 10 negacji, 10 relacji przestrzennych) sprawdzonych przez `PL→IR`, `EN→IR`, niezależne `IR→PL`, `IR→EN`, `PL→EN`, `EN→PL`;
-- testy kompozycji trzech dodatkowych par, które nie znajdują się w próbce 100, oraz test nowego leksemu `lampa/lamp` z niestandardowym ID (bez modyfikacji parsera i generatora);
-- odmowy niewłaściwego `a/an`, zgody demonstrative/adjective/copula, błędnej semantyki, niekompletnych ról i nieautoryzowanego wariantu konstrukcji;
-- dwa języki kompilowane jednorazowo do indeksów wyszukiwania form i sensów, z jawnym limitem kroków analizy i liczby kandydatów.
+## Wdrożony zakres
 
-## Co jeszcze NIE działa
+| Etap | Zakres testów Go | Zatwierdzone scenariusze |
+| --- | --- | ---: |
+| M0 | katalog 100 par w `tests/a1/a1_cases_test.go`, typy, kompilator, CLI | 0 |
+| M1 | identyfikacja i cechy z niezależnym IR | 20 |
+| M2 | posiadanie, predykaty 1- i 2-argumentowe, walencja | 50 |
+| M3 | negacja `Not(Event)`, do-support i polska rekcja | 60 |
+| M4 | 7 relacji miejsca i PP licencjonowane klasą miejsca | 70 |
+| M5 | dokładna liczebność 1–5, istnienie, count/mass | 80 |
+| M6 | pytania polar/who/what/where/how-many, jeden `Ask` | 90 |
+| M7 | przeszłość i przyszłość względem wczoraj/jutro | 100 |
+| M8 | stabilizacja, testy `-race`, CI, CLI, benchmark | 100 |
 
-- Produkcyjne zdania testowe 061–070 i 081–100 oraz brakujące 180 ścieżek semantycznych;
-- poprawna, kompletna deklinacja i koniugacja całego polskiego i angielskiego (M1 zawiera tylko potrzebne, sprawdzone komórki; nie należy zgadywać pozostałych);
-- pełna kompozycja NP/VP/PP/Clause poza obsługiwanymi ramami A1 SVO/SV, czasy inne niż present, aspekt, lokalizacja, liczebniki i pytania;
-- alternatywy leksykalne o różnych wymaganiach, pełna semantyka określoności i kwantyfikacji;
-- snapshot, szerokie benchmarki, weryfikacja energochłonności i trzeci język.
+Źródła PL i EN mają osobno ręcznie zapisane grafy znaczenia w kodzie Go. Każdy przypadek sprawdza `PL→IR`, `EN→IR`, `IR→PL`, `IR→EN`, `PL→EN`, `EN→PL`. Różnice rodzajnika i referencji z EN nie są automatycznie dopisywane do polskiego IR. Przypadki nie są ukrytymi frazami do dopasowania podczas translacji.
 
-## Ustalenia architektoniczne
+## Kontrakt semantyczny czasu (M7)
 
-1. Zmienne kontekstowe nie są odczytywane z tekstu testu. Bliskie wskazanie w PL jest jawną przesłanką testową. Bez niej tłumaczenie na EN nie twierdzi, że bliskość została rozpoznana.
-2. Oryginał zdania jest analizowany przy użyciu indeksu form, walencji i wzorca, a nie `switch` od identyfikatora przypadku lub pełnej powierzchni.
-3. Typowane formy pochodzą z operacji na leksemach i klasach (np. polski `książk- + ę`, angielski `apple + s`). Kompilacja wymaga wszystkich zadeklarowanych tematów, odmawia brakujących komórek i przechowuje indeks do analizy odwrotnej.
-4. Każdy test M1 używa **oddzielnie napisanego** grafu o innych lokalnych ID niż parser. Przyjęta implementacja nie ma dostępu do testowego oracle.
-5. `t.Log` zbierający 100 × 2 kierunki jest **obserwacyjny** i nie zalicza niezaimplementowanych scenariuszy.
+Węzeł `Event` zawiera czas (`past`/`future`) i ograniczoną referencję `previous_day`/`next_day`. Polski past ma formy zgody gramatycznej; angielski ma niezmienny past lub leksykalnie potwierdzone `slept/ran/read`. Przyszłość EN używa `will + base`; PL używa `będzie + forma -ł/-ła/-ło` lub `będę + infinitive`. Zjawisko pogodowe ma jawne `theme=rain` w IR, choć EN używa czysto powierzchniowego `it`.
 
-## Odbiór i interpretacja wyniku
+Wszystkie te formy są generowane przez wspólne klasy morfologii i lokalnie zadeklarowane konstrukcje, bez tabel 100 zdań w produkcyjnym kodzie. Ramy walencji licencjonują sensy; przypadek, do-support i czas dobiera pakiet językowy.
 
-Wykonane kontrole: `go test ./... -count=1`, `go test -race ./... -count=1`, `go vet ./...`, `go build ./cmd/golingua2`, `--help`, `--version`, rzeczywiste CLI z identyfikacją, cechą, nieznanym wskazaniem i błędną zgodą.
+## Granice i dalszy rozwój
 
-**Wymaganie językowe: 70/100 scenariuszy × 6 = 420/600 ścieżek.** Testy nowego słowa, morfologii, odwracania i kompilerów są dodatkowe; nie dolicza się ich do 600. Akceptacja właściciela: NOT EVALUATED.
+- A1 oznacza **wybraną setkę zdań**, nie pełen poziom ani swobodną rozmowę.
+- Nie ma dowolnych dat, przysłówków czasu, temporalnego `Not(Event)` we wszystkich kombinacjach, aspektowych par perfektw/imperfective, modalności, zagnieżdżenia i koordynacji.
+- Liczebność w tej dostawie ma formy 1–5 i ograniczone konstrukcje egzystencjalne; pytania obejmują wybrane typowane luki, nie pełną logikę zapytań.
+- Nie ma wszystkich paradygmatów PL/EN, kontekstowej dezambiguacji świata, pełnej referencji/anaphora ani wnioskowania o faktach.
+- Wydajność mierzona w ciepłym silniku to CPU/alloc, nie energia i nie porównanie z modelami neuronowymi.
 
-## Dostawa M2 (A1-021–050)
-
-- `Event` jest drugą postacią predykacji we **wspólnym** IR, nie nowym IR. Ma dokładne role agent/patient, holder/theme, agent/beneficiary, czas present i referent-local definiteness/person/number.
-- Sense czasownika licencjonuje konkretną kompilowaną ramę. Wzorce zdania obsługują SVO, SV i polski podmiot pominięty przy `mieć`; generator i parser używają tego samego pakietu.
-- EN: wspólne present-s, present-y oraz `have → has` jako punktowy wyjątek; PL: wspólne końcówki 3sg -a/-e/-i, proceduralne 6 form `mieć`, przypadek dopełnienia i celownik `dziecku`.
-- 30 niezależnych par wymaga 180 ścieżek produkcyjnego silnika; wszystkie są sprawdzane w `TestM2SixIndependentFlows`. Przykłady PL i EN zachowują **różne** źródłowe informacje o określoności; ich IR nie jest fałszywie utożsamiany. Przekład docelowy raportuje przypięte do referenta założenia i straty.
-- Negatywne testy obejmują niepoprawne `has/have`, `a/an`, brak rodzajnika angielskiej policzalnej liczby pojedynczej, błędną rekcję, niezgodną osobę/liczbę, zmienione role i powtórzone koncepty. Rozszerzenie pakietu o `predicate.observe` i regularny czasownik obu języków nie wymaga nowego parsera ani konstrukcji.
-- Wynik obserwacyjny: 50/100 PL→EN oraz 50/100 EN→PL; testy 001–050 mają pełny odbiór 300/600, 051–100 nie są zatwierdzone. Nie zmieniono żadnego zdania z katalogu 100.
-
-## Znane ograniczenia do następnej dostawy
-
-- Obsługiwane nominalne przypadki i czasownikowe komórki to *wyłącznie* wymagany wycinek, nie pełna deklinacja lub koniugacja PL/EN. Wspólne klasy odmiany nie uprawniają do zgadywania form bez leksykalnego tematu.
-- `OK` w API może zawierać `Losses`, gdy PL nie koduje rozróżnienia rodzajnika EN; pełna ocena musi czytać adnotacje. Formalne statusy kandydatów/etapów i rozszerzalne planowanie liczby będą dopracowane osobno.
-- Nie ma jeszcze negacji zagnieżdżonej, modalności ani skończonego czasu przeszłego/przyszłego w zdaniach M2.
-
-## Dostawa M3 (A1-051–060)
-
-- W IR dodano dokładnie jedną negację pojedynczego skończonego zdarzenia jako root `Scope{Operator: Not, Content: EventID}`, której nie wolno użyć wobec referenta ani jako nieoznaczonej cechy leksemu. Weryfikator rozróżnia `Not(event)` i pozytywny `event` w kanonicznym kluczu.
-- Wspólna gramatyka `grammar.Pattern` deklaruje kierunek, negację, opcjonalne auxiliary oraz pozycję znacznika; w pakiecie PL `nie` i dopełniacz po negacji występują w jawnie dozwolonych ramach, EN planuje `do/does not + base` na podstawie osoby i liczby podmiotu, z leksykalnym paradygmatem operatora.
-- Kompilator nie dopuszcza fałszywych markerów, braku pomocniczego EN, niepoprawnej kolejności ani promocji analyze-only do realize. Morfologia ma osobną komórkę formy bazowej — nie wykorzystuje 3pl present jako obejścia.
-- 10 samodzielnie zapisanych grafów IR PL/EN z innymi identyfikatorami niż parser, sześć ścieżek każdy, w sumie +60 ścieżek. Dodatkowy czasownik `obserwować/observe` przy `Not` działa bez nowych reguł zdań.
-- Negatywne kontrasty odmowy obejmują `does not sleeps`, `A cat do not sleep`, błędny polski biernik po Not i niekompletną rolę. Angielskie neutralne `you` zachowuje dwa odczytania bez wskazania adresata.
-- Całość nadal ograniczona do zatwierdzonych pojedynczych zdarzeń w teraźniejszości. Cały katalog ma 100 testowych par PL–EN w Go; pierwsze 60 oraz M4 071–080 przechodzą pełny odbiór, 30 pozostałych to NOT IMPLEMENTED / NOT EVALUATED, nie PASS.
-
-## Dostawa M4 (A1-071–080)
-
-- Dodano siedem typowanych, neutralnych predykatów relacji (`inside`, `on_support`, `below`, `at_site`, `in_front`, `behind`, `adjacent`) o dwóch wymaganych rolach. `StateRelation` nie jest eventem ani predykatem atrybucji i nie dopuszcza czasu zdarzenia.
-- Jeden wspólny interpreter złożenia nominatywnego NP + kopula + wielowyrazowy PP + zależna od języka rekcja rzeczownika. Konkretne przyimki, przypadki i selekcja klasy miejsca znajdują się w pakietach językowych, nie w core/sem ani w tablicy tłumaczeń zdań.
-- `at school` w EN używa wyjątkowej licencji bare NP; `w szkole` w PL jest lokalną konstrukcją z klasą instytucji, a `na drzewie` ↔ `in the tree` dotyczy klasy drzewa przy relacji `at_site`. Te przykłady nie oznaczają uniwersalnej równoznaczności wszystkich przyimków.
-- 10 niezależnie spisanych znaczeń i 60 ścieżek A1. Dodatkowo kontrolowane odmowy przypadków, błędne konstrukcje, pominięte role, zamiana ról, brak dopasowania źródło/target oraz nowe kompozycje bez dopisywania fraz do parsera.
-- Cały korpus 100 przykładów pozostaje tylko w Go, oryginalne wpisy nietknięte. 70/100 ma pełny odbiór 420/600, pytania (10), ilość (10) i czas (10) pozostają NOT IMPLEMENTED.
+**Warunek dalszego rozszerzania:** nowy rzeczownik, czasownik lub poprawne połączenie znanych elementów powinny korzystać z istniejących algorytmów. Gdy brakuje paradygmatu, roli lub konstrukcji, należy dodać kontrakt językowy albo zwrócić typowaną odmowę, a nie zakodować gotowe zdanie.

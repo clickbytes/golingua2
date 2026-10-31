@@ -91,7 +91,7 @@ func Definition() compile.Definition {
 		lexicon.Entry{ID: "pl.demo.ten", Language: "pl", Lemma: "ten", POS: lexicon.Determiner, ClassID: "pl.demonstrative.proximal", Stems: map[string]string{"masculine": "ten", "feminine": "ta", "neuter": "to"}},
 		lexicon.Entry{ID: "pl.verb.byc", Language: "pl", Lemma: "być", POS: lexicon.Verb, ClassID: "pl.copula.present", Stems: map[string]string{"present_3sg": "jest"}},
 	)
-	return addLocation(addEvents(compile.Definition{Language: "pl", Lexemes: entries, Senses: senses, MorphClasses: classes,
+	return addTime(addQuestions(addQuantity(addLocation(addEvents(compile.Definition{Language: "pl", Lexemes: entries, Senses: senses, MorphClasses: classes,
 		Frames: []grammar.Frame{
 			{ID: "pl.frame.classification", Predicate: "predicate.is_a", Role: "member", ValueSlot: grammar.Noun, ReferentConcept: "entity.unspecified"},
 			{ID: "pl.frame.property", Predicate: "predicate.has_property", Role: "bearer", ValueSlot: grammar.Adjective},
@@ -101,5 +101,5 @@ func Definition() compile.Definition {
 			{ID: "pl.classification.proximal", FrameID: "pl.frame.classification", Predicate: "predicate.is_a", Analyze: true, Realize: true, DemoGender: "fixed_neuter", Sequence: []grammar.Element{{Slot: grammar.Demonstrative}, {Slot: grammar.Copula}, {Slot: grammar.Noun}}},
 			{ID: "pl.property.proximal", FrameID: "pl.frame.property", Predicate: "predicate.has_property", Analyze: true, Realize: true, DemoGender: "agree", Sequence: []grammar.Element{{Slot: grammar.Demonstrative}, {Slot: grammar.Noun}, {Slot: grammar.Copula}, {Slot: grammar.Adjective}}},
 		},
-	}))
+	})))))
 }

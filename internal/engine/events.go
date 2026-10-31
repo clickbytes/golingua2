@@ -46,7 +46,7 @@ func (e *Engine) parseNounPhraseMode(p *compile.Pack, tokens []string, slotCase 
 	if len(tokens) == 0 || len(tokens) > 2 {
 		return nil
 	}
-	out := []nounReading{}
+	out := e.parseNumberedNP(p, tokens, slotCase)
 	// Exactly one word for lexical pronouns; pronoun morphology is nominative.
 	if subject && len(tokens) == 1 {
 		for _, form := range p.Morph.Analyze(tokens[0]) {
@@ -71,6 +71,30 @@ func (e *Engine) parseNounPhraseMode(p *compile.Pack, tokens []string, slotCase 
 					}
 				}
 				out = append(out, nounReading{ref: ref, lex: lex, sense: sense, tokens: 1})
+			}
+		}
+	}
+	if len(tokens) == 2 {
+		// A demonstrative is referential/deictic evidence, not an article.
+		for _, demo := range p.Morph.Analyze(tokens[0]) {
+			if demo.LexemeID != p.Specials.Demonstrative || demo.Features.Number != "singular" {
+				continue
+			}
+			for _, form := range p.Morph.Analyze(tokens[1]) {
+				noun, ok := p.Lexicon.Lookup(form.LexemeID)
+				if !ok || noun.POS != lexicon.Noun || form.Features.Number != "singular" || form.Features.Case != slotCase || demo.Features.Gender != "" && demo.Features.Gender != noun.Gender {
+					continue
+				}
+				refDeixis := req.Deixis
+				if p.Specials.DemoDenotesProximal {
+					if req.Deixis == context.Distal {
+						continue
+					}
+					refDeixis = context.Proximal
+				}
+				for _, sense := range p.Lexicon.SensesFor(noun.ID) {
+					out = append(out, nounReading{ref: sem.Node{Kind: sem.Referent, Concept: sense.Concept, Number: "singular", Reference: refDeixis}, lex: noun, sense: sense, tokens: 2})
+				}
 			}
 		}
 	}
@@ -329,6 +353,7 @@ func (e *Engine) analyzeEventPattern(p *compile.Pack, pat grammar.Pattern, token
 type phraseOption struct {
 	text              string
 	grammaticalNumber string
+	grammaticalGender string
 	assumptions       []Annotation
 	losses            []Annotation
 }
@@ -346,6 +371,31 @@ func (e *Engine) renderEventNPClass(p *compile.Pack, ref sem.Node, grammaticalCa
 		return nil
 	}
 
+	if ref.Cardinality > 0 {
+		return e.renderNumberedNP(p, ref, grammaticalCase)
+	}
+	if ref.Reference == context.Proximal && ref.Person == "" {
+		var out []phraseOption
+		for _, noun := range selectLexemes(p, ref.Concept, lexicon.Noun) {
+			if ref.Number != "singular" {
+				continue
+			}
+			caseForm, err := p.Morph.Generate(noun.ID, features.Spec{Number: "singular", Case: grammaticalCase})
+			if err != nil {
+				continue
+			}
+			gender := noun.Gender
+			if p.Specials.DemoDenotesProximal {
+				gender = ""
+			}
+			demo, err := p.Morph.Generate(p.Specials.Demonstrative, features.Spec{Number: "singular", Gender: gender})
+			if err != nil {
+				continue
+			}
+			out = append(out, phraseOption{text: demo + " " + caseForm, grammaticalNumber: "singular", grammaticalGender: noun.Gender})
+		}
+		return out
+	}
 	if ref.Person != "" {
 		out := []phraseOption{}
 		for _, lex := range selectLexemes(p, ref.Concept, lexicon.Pronoun) {
@@ -407,7 +457,7 @@ func (e *Engine) renderEventNPClass(p *compile.Pack, ref sem.Node, grammaticalCa
 				continue
 			}
 			if p.Language == "pl" {
-				option := phraseOption{text: suffix, grammaticalNumber: number}
+				option := phraseOption{text: suffix, grammaticalNumber: number, grammaticalGender: lex.Gender}
 				if ref.Definiteness != "" {
 					option.losses = append(option.losses, Annotation{Node: ref.ID, Field: "determiner", Value: ref.Definiteness})
 				}
@@ -420,7 +470,7 @@ func (e *Engine) renderEventNPClass(p *compile.Pack, ref sem.Node, grammaticalCa
 				definiteModes = []string{"indefinite", "definite"}
 			}
 			for _, mode := range definiteModes {
-				option := phraseOption{text: suffix, grammaticalNumber: number}
+				option := phraseOption{text: suffix, grammaticalNumber: number, grammaticalGender: lex.Gender}
 				if mode == "definite" {
 					article, err := p.Morph.Generate(p.Specials.DefiniteArticle, features.Spec{})
 					if err != nil {
@@ -460,7 +510,7 @@ func (e *Engine) realizeEvent(p *compile.Pack, m sem.Meaning, eventID sem.NodeID
 	event := nodes[eventID]
 	produced := map[string]Candidate{}
 	for _, pat := range p.Constructions {
-		if !pat.Event || !pat.Realize || pat.Negated != negated {
+		if !pat.Event || pat.Temporal || !pat.Realize || pat.Negated != negated {
 			continue
 		}
 		frame, ok := p.EventFrame(pat.FrameID)

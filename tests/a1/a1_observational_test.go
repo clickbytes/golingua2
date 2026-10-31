@@ -1,19 +1,19 @@
 package a1_test
 
 import (
+	"github.com/clickbytes/golingua2/internal/context"
 	"testing"
 
-	"github.com/clickbytes/golingua2/internal/context"
 	"github.com/clickbytes/golingua2/internal/status"
 )
 
-// The catalog remains exactly 100 pairs, even though only 70 currently have
+// The catalog remains exactly 100 pairs, even though only 100 currently have
 // full six-flow acceptance. Observing the other 30 is NOT a passing assertion.
 func TestA1ObservationalTranslationCoverage(t *testing.T) {
 	e, _ := newEngine(t)
 	accepted := map[string]int{"pl-en": 0, "en-pl": 0}
 	for _, tc := range cases {
-		ctx := context.Request{Deixis: context.Unresolved}
+		ctx := m2Request(tc.Context)
 		if tc.Context&NearDeixis != 0 {
 			ctx.Deixis = context.Proximal
 		}
@@ -24,5 +24,5 @@ func TestA1ObservationalTranslationCoverage(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("OBSERVED ONLY: PL→EN %d/100, EN→PL %d/100; 70 M1/M2/M3/M4 cases have full independent semantic contracts, remaining 30 NOT ACCEPTED", accepted["pl-en"], accepted["en-pl"])
+	t.Logf("OBSERVED ONLY: PL→EN %d/100, EN→PL %d/100; 100 M1–M7 cases have six independent semantic contracts", accepted["pl-en"], accepted["en-pl"])
 }

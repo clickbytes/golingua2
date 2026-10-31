@@ -22,6 +22,7 @@ const (
 	Auxiliary  POS = "auxiliary"
 	Particle   POS = "particle"
 	Adposition POS = "adposition"
+	Numeral    POS = "numeral"
 )
 
 type Entry struct {
@@ -36,6 +37,7 @@ type Entry struct {
 	Onset string
 	// Countability determines article/number behavior without inventing cardinality.
 	Countability string // "count", "mass", "plural_only" for nouns
+	NumeralValue int    // exact cardinality spelled by a numeral, not a lexical sense
 	// SiteClass is a lexical selection class (e.g. institution/tree/general),
 	// never a CORE predicate or a sentence-specific condition.
 	SiteClass     string
@@ -67,11 +69,14 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 	}
 	i := &Index{entries: make(map[string]Entry, len(entries)), senses: make(map[string]Sense, len(senses)), byConcept: make(map[core.ID][]Entry), byLexeme: make(map[string][]Sense)}
 	for _, e := range entries {
-		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun && e.POS != Auxiliary && e.POS != Particle && e.POS != Adposition) {
+		if e.ID == "" || e.Lemma == "" || strings.TrimSpace(e.Lemma) != e.Lemma || e.Language != language || e.ClassID == "" || (e.POS != Noun && e.POS != Adjective && e.POS != Verb && e.POS != Determiner && e.POS != Article && e.POS != Pronoun && e.POS != Auxiliary && e.POS != Particle && e.POS != Adposition && e.POS != Numeral) {
 			return nil, fmt.Errorf("invalid lexeme %q", e.ID)
 		}
 		if _, ok := i.entries[e.ID]; ok {
 			return nil, fmt.Errorf("duplicate lexeme %q", e.ID)
+		}
+		if (e.POS == Numeral && (e.NumeralValue < 1 || e.NumeralValue > 20)) || (e.POS != Numeral && e.NumeralValue != 0) {
+			return nil, fmt.Errorf("invalid numeral value for %q", e.ID)
 		}
 		if e.POS == Noun && e.Gender == "" && language == "pl" {
 			return nil, fmt.Errorf("Polish noun %q requires gender", e.ID)
@@ -103,7 +108,7 @@ func Compile(entries []Entry, senses []Sense, catalog *core.Catalog, language st
 		if !ok {
 			return nil, fmt.Errorf("unbound sense %q", s.ID)
 		}
-		if e.POS == Auxiliary || e.POS == Particle || e.POS == Adposition {
+		if e.POS == Auxiliary || e.POS == Particle || e.POS == Adposition || e.POS == Numeral {
 			return nil, fmt.Errorf("structural operator lexeme cannot claim a semantic predicate: %q", s.ID)
 		}
 		d, ok := catalog.Lookup(s.Concept)

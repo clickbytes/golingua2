@@ -23,6 +23,10 @@ const (
 	AdpositionPhrase   Slot = "adposition_phrase"
 	NegationAuxiliary  Slot = "negation_auxiliary"
 	NegationMarker     Slot = "negation_marker"
+	ExistentialMarker  Slot = "existential_marker"
+	TemporalAdverb     Slot = "temporal_adverb"
+	FutureAuxiliary    Slot = "future_auxiliary"
+	WeatherExpletive   Slot = "weather_expletive"
 )
 
 type Frame struct {
@@ -39,16 +43,18 @@ type Frame struct {
 // EventFrame uses neutral role signatures and language-local government. It has
 // no per-verb construction list: each verb sense explicitly licenses the frame.
 type EventFrame struct {
-	ID                   string
-	SubjectRole          string
-	ObjectRole           string // empty for an intransitive predicate
-	ObjectCase           string // target language morphological case
-	NegatedObjectCase    string // explicit case government for Not, empty means ObjectCase
-	AllowImplicitSubject bool
+	ID                    string
+	SubjectRole           string
+	ObjectRole            string // empty for an intransitive predicate
+	ObjectCase            string // target language morphological case
+	NegatedObjectCase     string // explicit case government for Not, empty means ObjectCase
+	AllowImplicitSubject  bool
+	Weather               bool    // grammatical expletive/nominal weather syntax, neutral predicate unchanged
+	WeatherSubjectConcept core.ID // exact referent concept for an implicit weather subject
 }
 
 func ValidateEventFrame(f EventFrame) error {
-	if f.ID == "" || f.SubjectRole == "" || (f.ObjectRole != "" && f.ObjectRole == f.SubjectRole) || (f.ObjectRole == "" && (f.ObjectCase != "" || f.NegatedObjectCase != "")) {
+	if f.ID == "" || f.SubjectRole == "" || (f.Weather && (f.ObjectRole != "" || f.WeatherSubjectConcept == "")) || (!f.Weather && f.WeatherSubjectConcept != "") || (f.ObjectRole != "" && f.ObjectRole == f.SubjectRole) || (f.ObjectRole == "" && (f.ObjectCase != "" || f.NegatedObjectCase != "")) {
 		return fmt.Errorf("invalid event frame %q", f.ID)
 	}
 	return nil
@@ -125,16 +131,20 @@ func ValidateLocationFrame(f LocationFrame, catalog *core.Catalog) error {
 
 type Element struct{ Slot Slot }
 type Pattern struct {
-	Event      bool
-	Location   bool // spatial relation, not lexical event or property attribution
-	Negated    bool // this construction covers an exact Not scope
-	ID         string
-	FrameID    string
-	Predicate  core.ID
-	Sequence   []Element
-	Analyze    bool
-	Realize    bool
-	DemoGender string // "fixed_neuter", "agree", "invariant"
+	Event         bool
+	Location      bool   // spatial relation, not lexical event or property attribution
+	Existential   bool   // exact quantified existence at a location, not ordinary location
+	Temporal      bool   // adverb-anchored finite event clause
+	TemporalTense string // past or future on Temporal patterns
+	Weather       bool   // expletive/nominal weather surface, not new semantic event
+	Negated       bool   // this construction covers an exact Not scope
+	ID            string
+	FrameID       string
+	Predicate     core.ID
+	Sequence      []Element
+	Analyze       bool
+	Realize       bool
+	DemoGender    string // "fixed_neuter", "agree", "invariant"
 }
 
 func Validate(p Pattern) error {
@@ -142,10 +152,16 @@ func Validate(p Pattern) error {
 		return fmt.Errorf("invalid construction declaration %q", p.ID)
 	}
 	if p.Location {
-		if p.Event || p.Negated || p.Predicate != "" || p.DemoGender != "" {
+		if p.Event || p.Temporal || p.Negated || p.Predicate != "" || p.DemoGender != "" {
 			return fmt.Errorf("location pattern mixes unrelated policies %q", p.ID)
 		}
 		expected := []Slot{SubjectPhrase, Copula, AdpositionPhrase, LocationSitePhrase}
+		if p.Existential {
+			expected = []Slot{AdpositionPhrase, LocationSitePhrase, Copula, SubjectPhrase}
+			if len(p.Sequence) > 0 && p.Sequence[0].Slot == ExistentialMarker {
+				expected = []Slot{ExistentialMarker, Copula, SubjectPhrase, AdpositionPhrase, LocationSitePhrase}
+			}
+		}
 		if len(p.Sequence) != len(expected) {
 			return fmt.Errorf("incomplete location construction %q", p.ID)
 		}
@@ -156,7 +172,33 @@ func Validate(p Pattern) error {
 		}
 		return nil
 	}
+	if p.Existential {
+		return fmt.Errorf("existential requires spatial construction %q", p.ID)
+	}
+	if p.Temporal && !p.Event {
+		return fmt.Errorf("temporal construction requires an event frame %q", p.ID)
+	}
 	if p.Event {
+		if p.Temporal {
+			if p.Negated || p.Predicate != "" || p.DemoGender != "" || (p.TemporalTense != "past" && p.TemporalTense != "future") {
+				return fmt.Errorf("invalid temporal construction %q", p.ID)
+			}
+			counts := map[Slot]int{}
+			for _, el := range p.Sequence {
+				counts[el.Slot]++
+			}
+			if counts[TemporalAdverb] != 1 || counts[PredicateVerb] != 1 || counts[SubjectPhrase] > 1 || counts[ObjectPhrase] > 1 || counts[WeatherExpletive] > 1 ||
+				counts[FutureAuxiliary] > 1 || counts[FutureAuxiliary] != btoi(p.TemporalTense == "future") || (counts[WeatherExpletive] != btoi(p.Weather && counts[SubjectPhrase] == 0)) ||
+				counts[SubjectPhrase]+counts[ObjectPhrase]+counts[PredicateVerb]+counts[TemporalAdverb]+counts[FutureAuxiliary]+counts[WeatherExpletive] != len(p.Sequence) {
+				return fmt.Errorf("invalid temporal slot structure %q", p.ID)
+			}
+			for i, el := range p.Sequence {
+				if el.Slot == FutureAuxiliary && (i+1 >= len(p.Sequence) || p.Sequence[i+1].Slot != PredicateVerb) {
+					return fmt.Errorf("future auxiliary must precede predicate in %q", p.ID)
+				}
+			}
+			return nil
+		}
 		if p.DemoGender != "" || p.Predicate != "" {
 			return fmt.Errorf("event pattern mixes unrelated predicate/demonstrative policies %q", p.ID)
 		}
@@ -217,4 +259,11 @@ func Validate(p Pattern) error {
 		return fmt.Errorf("invalid construction slots %q", p.ID)
 	}
 	return nil
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

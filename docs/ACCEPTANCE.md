@@ -1,6 +1,6 @@
 # GoLingua 2 — odbiór i testy A1 w kodzie Go
 
-**Status:** wymagania. Kompletne 100 zdań znajduje się wyłącznie w `tests/a1/a1_cases_test.go`; nie ma katalogu zdań w JSON.
+**Status:** wymagania + rzeczywisty odbiór M0–M8 dla 100 przypadków w Go. Kompletne 100 zdań znajduje się wyłącznie w `tests/a1/a1_cases_test.go`; nie ma katalogu zdań w JSON.
 
 ## 1. Trzy niezależne warstwy testów
 
@@ -29,7 +29,7 @@ Każdy przypadek wymaga *niezależnego, napisanego ręcznie w Go* grafu/warunkó
 
 Razem **600 kontroli ścieżek** oraz dodatkowe odmowy. Każdy test zbiera `caseID`, `sourceSHA`, `packDigest`, `input`, `expectedMeaning`, `output`, `diagnostics` i dokładną ocenę. `PASS` tylko gdy spełniony cały kontrakt. `NOT RUN`, `UNSUPPORTED`, `INCOMPLETE`, `INVALID` i `RESOURCE_LIMIT` są widoczne, nigdy maskowane.
 
-## 2. Wzorzec przyszłego kodu testowego (do podpięcia po implementacji silnika)
+## 2. Wzorzec sześciu kontroli i rzeczywisty kod testowy
 
 ```go
 // Docelowy wzorzec; symbole engine/sem zostaną określone po M0–M1.
@@ -50,7 +50,7 @@ func TestA1Acceptance(t *testing.T) {
 }
 ```
 
-`cases` z załączonego startera jest już kompilowalną tabelą Go. Wspomniany kod integracji jest **szkicem wymagania**, nie testem, który dziś przechodzi. Dopiero po przygotowaniu niezależnych `want` dla wszystkich 100 przypadków można ogłosić odbiór A1.
+Rzeczywiste testy `TestM2SixIndependentFlows`, `TestM3SixIndependentFlows`, `TestM4SixIndependentFlows`, `TestM5SixIndependentFlows`, `TestM6SixIndependentFlows`, `TestM7SixIndependentFlows` oraz niezależne testy M1 sprawdzają komplet 100 przypadków. Powyższy przykład API pozostaje jedynie ilustracją. Odbiór techniczny 600/600 nie jest certyfikacją językową CEFR ani akceptacją właściciela.
 
 ## 3. Dopuszczone warianty i nieporównywanie samych stringów
 
@@ -102,9 +102,9 @@ Po każdej dostawie zapisujemy dokładne polecenia i status:
 ```sh
 go fmt ./...
 go vet ./...
-go test ./tests/a1 -count=1 -v          # na razie TYLKO integralność katalogu
+go test ./tests/a1 -count=1 -v          # 100 przypadków × sześć przepływów
 go test ./... -count=1                 # od M1 także testy modułów
-go build ./cmd/golingua2              # od czasu implementacji CLI
+go build ./cmd/golingua2
 ```
 
-Nie uruchamiamy `go build` dopóki nie istnieje `cmd/golingua2`. Dla częściowej iteracji osobno zapisujemy `Implemented/Unsupported/Not Run`, a dopiero dla zakończonej całej próbki końcowe 100/100 i 600/600 kontraktów. Techniczne CI i językowy odbiór to dwie różne bramki.
+`cmd/golingua2` już istnieje. W kompletnym przebiegu 100/100 i 600/600 kontraktów przechodzą testy, natomiast poza zadeklarowanym zakresem każda odmowa pozostaje widoczna. Techniczne CI i akceptacja językowa właściciela są odrębnymi bramkami.

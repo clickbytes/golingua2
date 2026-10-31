@@ -1,5 +1,7 @@
 # GoLingua 2 — kompletna architektura docelowa dla pierwszych 100 scenariuszy A1
 
+> **Implementacja M0–M8:** ukończona dla 100 par w `tests/a1/a1_cases_test.go`. Wszystkie 600 niezależnych przepływów zaliczone, nie oznacza to pełnego języka A1. Pozostałe rozdziały przedstawiają projekt i kontrakty.
+
 **Wersja projektu:** RFC-001 / DRAFT 2026-10-31. **Język implementacji:** Go. **Języki startowe:** polski (PL) i angielski (EN). **Docelowe repozytorium:** `clickbytes/golingua2`. **Status:** dokument projektowy, nie deklaracja wykonanej implementacji.
 
 ## 0. Cel, zakres i decyzje wejściowe

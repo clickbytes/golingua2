@@ -248,6 +248,13 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 	if !req.Valid() {
 		return fail(status.Invalid, "INVALID_CONTEXT", "unknown deixis")
 	}
+	if strings.HasSuffix(strings.TrimSpace(text), "?") {
+		tokens, err := words(strings.TrimSuffix(strings.TrimSpace(text), "?") + ".")
+		if err != nil {
+			return fail(status.Unsupported, "UNSUPPORTED_QUESTION", err.Error())
+		}
+		return e.analyzeQuestion(p, tokens, req)
+	}
 	tokens, err := words(text)
 	if err != nil {
 		return fail(status.Unsupported, "UNSUPPORTED_SENTENCE", err.Error())
@@ -326,7 +333,13 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 		if !pat.Location || !pat.Analyze {
 			continue
 		}
-		for _, candidate := range e.analyzeLocationPattern(p, pat, tokens, req) {
+		var candidates []Candidate
+		if pat.Existential {
+			candidates = e.analyzeExistentialPattern(p, pat, tokens, req)
+		} else {
+			candidates = e.analyzeLocationPattern(p, pat, tokens, req)
+		}
+		for _, candidate := range candidates {
 			key, err := sem.CanonicalKey(candidate.Meaning, e.catalog)
 			if err != nil {
 				continue
@@ -342,7 +355,13 @@ func (e *Engine) Analyze(language, text string, req context.Request) Result {
 		if !pat.Event || !pat.Analyze {
 			continue
 		}
-		for _, candidate := range e.analyzeEventPattern(p, pat, tokens, req) {
+		candidates := []Candidate{}
+		if pat.Temporal {
+			candidates = e.analyzeTemporalPattern(p, pat, tokens, req)
+		} else {
+			candidates = e.analyzeEventPattern(p, pat, tokens, req)
+		}
+		for _, candidate := range candidates {
 			key, err := sem.CanonicalKey(candidate.Meaning, e.catalog)
 			if err != nil {
 				continue
@@ -461,10 +480,19 @@ func (e *Engine) Realize(language string, meaning sem.Meaning) Result {
 		if n.ID != meaning.Root {
 			continue
 		}
+		if n.Kind == sem.Scope && n.Operator == sem.Ask {
+			return e.realizeQuestion(p, meaning, n)
+		}
 		if n.Kind == sem.State && len(n.Arguments) == 2 && n.Value == "" {
+			if n.Existential {
+				return e.realizeExistential(p, meaning, n.ID)
+			}
 			return e.realizeLocation(p, meaning, n.ID)
 		}
 		if n.Kind == sem.Event {
+			if n.Tense != "present" {
+				return e.realizeTemporal(p, meaning, n.ID)
+			}
 			return e.realizeEvent(p, meaning, n.ID, false)
 		}
 		if n.Kind == sem.Scope && n.Operator == sem.Not {
